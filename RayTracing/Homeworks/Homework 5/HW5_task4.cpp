@@ -11,7 +11,6 @@ struct Vector3
     Vector3 operator-(const Vector3 &v) const { return {x - v.x, y - v.y, z - v.z}; }
     Vector3 operator+(const Vector3 &v) const { return {x + v.x, y + v.y, z + v.z}; }
     Vector3 operator*(float t) const { return {x * t, y * t, z * t}; }
-    Vector3 operator/(float t) const { return {x / t, y / t, z / t}; }
 
     float dot(const Vector3 &v) const { return x * v.x + y * v.y + z * v.z; }
 
@@ -33,6 +32,7 @@ struct Vector3
 struct Triangle
 {
     Vector3 v0, v1, v2;
+    int r, g, b;
 };
 
 bool intersectRayTriangle(const Vector3 &origin, const Vector3 &dir, const Triangle &tri, float &tOut)
@@ -75,50 +75,48 @@ int main()
 {
     const int width = 512;
     const int height = 512;
-    std::ofstream image("output.ppm");
+    std::ofstream image("task4_output.ppm");
     image << "P3\n"
           << width << " " << height << "\n255\n";
 
-    Vector3 camPos{0, 0, 0};
-    float aspect = float(width) / height;
+    Vector3 camPos{-2, 1, 0};
+    float aspectRatio = float(width) / height;
 
     std::vector<Triangle> triangles = {
-        {{-1.75, -1.75, -3}, {1.75, -1.75, -3}, {0, 1.75, -3}},
-        {{-1.0, -1.0, -2.5}, {1.0, -1.0, -2.5}, {0, 1.0, -2.5}},
-    };
+        {{-1.75, -1.75, -3}, {-1.75, -1.75, -5}, {0, 1.75, -4}, 0, 255, 0},
+        {{1.75, -1.75, -3}, {1.75, -1.75, -5}, {0, 1.75, -4}, 0, 0, 255},
+        {{-1.75, -1.75, -3}, {1.75, -1.75, -3}, {0, 1.75, -4}, 255, 0, 0}};
 
-    for (int y = 0; y < height; y++)
+    for (int y = 0; y < height; ++y)
     {
-        for (int x = 0; x < width; x++)
+        for (int x = 0; x < width; ++x)
         {
-            float u = (2.0f * x / width - 1.0f) * aspect;
-            float v = 1.0f - 2.0f * y / height;
-            Vector3 dir{u, v, -1};
-            dir = dir.normalize();
+            float px = (x + 0.5f) / width;
+            float py = (y + 0.5f) / height;
 
-            float minT = std::numeric_limits<float>::max();
-            bool hit = false;
+            float screenX = (2.0f * px - 1.0f) * aspectRatio;
+            float screenY = 1.0f - 2.0f * py;
+
+            Vector3 dir = Vector3{screenX, screenY, -1}.normalize();
+
+            float closestT = std::numeric_limits<float>::max();
+            int r = 0, g = 0, b = 0;
             for (const auto &tri : triangles)
             {
                 float t;
                 if (intersectRayTriangle(camPos, dir, tri, t))
                 {
-                    if (t < minT)
+                    if (t < closestT)
                     {
-                        minT = t;
-                        hit = true;
+                        closestT = t;
+                        r = tri.r;
+                        g = tri.g;
+                        b = tri.b;
                     }
                 }
             }
 
-            if (hit)
-            {
-                image << "255 0 0\n";
-            }
-            else
-            {
-                image << "0 0 0\n";
-            }
+            image << r << " " << g << " " << b << "\n";
         }
     }
 
