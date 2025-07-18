@@ -2,9 +2,11 @@
 #include <fstream>
 #include <vector>
 #include <cmath>
-#include <string>
 #include <limits>
-#include <cstdlib>
+#include <sstream>
+#include <iomanip>
+
+const float PI = 3.14159265f;
 
 struct Vector3
 {
@@ -13,7 +15,6 @@ struct Vector3
     Vector3 operator-(const Vector3 &v) const { return {x - v.x, y - v.y, z - v.z}; }
     Vector3 operator+(const Vector3 &v) const { return {x + v.x, y + v.y, z + v.z}; }
     Vector3 operator*(float t) const { return {x * t, y * t, z * t}; }
-    Vector3 operator/(float t) const { return {x / t, y / t, z / t}; }
 
     float dot(const Vector3 &v) const { return x * v.x + y * v.y + z * v.z; }
 
@@ -35,55 +36,7 @@ struct Vector3
 struct Triangle
 {
     Vector3 v0, v1, v2;
-};
-
-struct Camera
-{
-    Vector3 pos = {0, 0, 0};
-    Vector3 dir = {0, 0, -1};
-    Vector3 up = {0, 1, 0};
-
-    void pan(float degrees)
-    {
-        float rad = degrees * M_PI / 180.0f;
-        float cosA = std::cos(rad);
-        float sinA = std::sin(rad);
-        dir = {dir.x * cosA - dir.z * sinA, dir.y, dir.x * sinA + dir.z * cosA};
-        dir = dir.normalize();
-    }
-
-    void tilt(float degrees)
-    {
-        float rad = degrees * M_PI / 180.0f;
-        Vector3 right = dir.cross(up).normalize();
-        float cosA = std::cos(rad);
-        float sinA = std::sin(rad);
-        dir = (dir * cosA + up * sinA).normalize();
-        up = right.cross(dir).normalize();
-    }
-
-    void truck(float amount)
-    {
-        Vector3 right = dir.cross(up).normalize();
-        pos = pos + right * amount;
-    }
-
-    void pedestal(float amount)
-    {
-        pos = pos + up * amount;
-    }
-
-    void dolly(float amount)
-    {
-        pos = pos + dir * amount;
-    }
-
-    void roll(float degrees)
-    {
-        float rad = degrees * M_PI / 180.0f;
-        Vector3 right = dir.cross(up).normalize();
-        up = (up * std::cos(rad) + right * std::sin(rad)).normalize();
-    }
+    int r, g, b;
 };
 
 bool intersectRayTriangle(const Vector3 &origin, const Vector3 &dir, const Triangle &tri, float &tOut)
@@ -91,107 +44,174 @@ bool intersectRayTriangle(const Vector3 &origin, const Vector3 &dir, const Trian
     Vector3 e0 = tri.v1 - tri.v0;
     Vector3 e1 = tri.v2 - tri.v0;
     Vector3 normal = e0.cross(e1).normalize();
+
     float dotNR = normal.dot(dir);
     if (std::abs(dotNR) < 1e-5)
         return false;
+
     float dist = normal.dot(tri.v0 - origin);
     if (dist / dotNR < 0)
         return false;
+
     float t = dist / dotNR;
     Vector3 P = origin + dir * t;
+
     Vector3 V0P = P - tri.v0;
     Vector3 V1P = P - tri.v1;
     Vector3 V2P = P - tri.v2;
+
     Vector3 E0 = tri.v1 - tri.v0;
     Vector3 E1 = tri.v2 - tri.v1;
     Vector3 E2 = tri.v0 - tri.v2;
+
     if (normal.dot(E0.cross(V0P)) < 0)
         return false;
     if (normal.dot(E1.cross(V1P)) < 0)
         return false;
     if (normal.dot(E2.cross(V2P)) < 0)
         return false;
+
     tOut = t;
     return true;
 }
 
-void renderFrame(const std::string &filename, const Camera &cam, const std::vector<Triangle> &tris, int width, int height)
+struct Camera
 {
+    Vector3 position = {0, 0, 0};
+    Vector3 direction = {0, 0, -1};
+    Vector3 up = {0, 1, 0};
+
+    void dolly(float amount)
+    {
+        position = position + direction.normalize() * amount;
+    }
+
+    void truck(float amount)
+    {
+        Vector3 right = direction.cross(up).normalize();
+        position = position + right * amount;
+    }
+
+    void pedestal(float amount)
+    {
+        position = position + up.normalize() * amount;
+    }
+
+    void pan(float degrees)
+    {
+        float radians = degrees * PI / 180.0f;
+        float cosA = std::cos(radians);
+        float sinA = std::sin(radians);
+        Vector3 newDir = {
+            direction.x * cosA + direction.z * sinA,
+            direction.y,
+            -direction.x * sinA + direction.z * cosA};
+        direction = newDir.normalize();
+    }
+
+    void tilt(float degrees)
+    {
+        float radians = degrees * PI / 180.0f;
+        Vector3 right = direction.cross(up).normalize();
+        float cosA = std::cos(radians);
+        float sinA = std::sin(radians);
+
+        Vector3 newDir = {
+            direction.x * cosA + up.x * sinA,
+            direction.y * cosA + up.y * sinA,
+            direction.z * cosA + up.z * sinA};
+        direction = newDir.normalize();
+    }
+
+    void roll(float degrees)
+    {
+        float radians = degrees * PI / 180.0f;
+        Vector3 right = direction.cross(up).normalize();
+        float cosA = std::cos(radians);
+        float sinA = std::sin(radians);
+
+        Vector3 newUp = {
+            up.x * cosA + right.x * sinA,
+            up.y * cosA + right.y * sinA,
+            up.z * cosA + right.z * sinA};
+        up = newUp.normalize();
+    }
+};
+
+void renderImage(const Camera &cam, const std::vector<Triangle> &triangles, const std::string &filename)
+{
+    const int width = 512, height = 512;
+    float aspectRatio = float(width) / height;
     std::ofstream image(filename);
     image << "P3\n"
           << width << " " << height << "\n255\n";
-    float aspect = float(width) / height;
-    Vector3 right = cam.dir.cross(cam.up).normalize();
-    Vector3 up = right.cross(cam.dir).normalize();
 
-    for (int y = 0; y < height; y++)
+    for (int y = 0; y < height; ++y)
     {
-        for (int x = 0; x < width; x++)
+        for (int x = 0; x < width; ++x)
         {
-            float u = (2.0f * x / width - 1.0f) * aspect;
-            float v = 1.0f - 2.0f * y / height;
-            Vector3 dir = (cam.dir + right * u + up * v).normalize();
-            float minT = std::numeric_limits<float>::max();
-            bool hit = false;
-            for (const auto &tri : tris)
+            float px = (x + 0.5f) / width;
+            float py = (y + 0.5f) / height;
+            float screenX = (2.0f * px - 1.0f) * aspectRatio;
+            float screenY = 1.0f - 2.0f * py;
+
+            Vector3 right = cam.direction.cross(cam.up).normalize();
+            Vector3 imagePoint = (cam.direction + right * screenX + cam.up * screenY).normalize();
+
+            float closestT = std::numeric_limits<float>::max();
+            int r = 0, g = 0, b = 0;
+            for (const auto &tri : triangles)
             {
                 float t;
-                if (intersectRayTriangle(cam.pos, dir, tri, t))
+                if (intersectRayTriangle(cam.position, imagePoint, tri, t))
                 {
-                    if (t < minT)
+                    if (t < closestT)
                     {
-                        minT = t;
-                        hit = true;
+                        closestT = t;
+                        r = tri.r;
+                        g = tri.g;
+                        b = tri.b;
                     }
                 }
             }
-            if (hit)
-                image << "255 255 255\n";
-            else
-                image << "0 0 0\n";
+            image << r << " " << g << " " << b << "\n";
         }
     }
-
     image.close();
 }
 
 int main()
 {
-    int width = 512;
-    int height = 512;
-    system("mkdir frames");
-
-    std::vector<Triangle> tris = {
-        {{-1.75, -1.75, -3}, {1.75, -1.75, -3}, {0, 1.75, -3}}};
+    std::vector<Triangle> triangles = {
+        {{-1.75f, -1.75f, -3}, {1.75f, -1.75f, -3}, {0, 1.75f, -3}, 255, 0, 0}};
 
     Camera cam;
 
     cam.pan(30);
-    renderFrame("task1_pan.ppm", cam, tris, width, height);
+    renderImage(cam, triangles, "task1_pan_30.ppm");
 
-    cam = {};
-    cam.pos = {0, 0, 2};
-    cam.dir = {0, 0, -1};
-    renderFrame("task2_shifted.ppm", cam, tris, width, height);
+    cam.position = {0, 0, 2};
+    cam.direction = {0, 0, -1};
+    renderImage(cam, triangles, "task2_offset_cam.ppm");
 
-    cam = {};
-    renderFrame("task3_before.ppm", cam, tris, width, height);
-    cam.dolly(-1.5f);
-    renderFrame("task3_after.ppm", cam, tris, width, height);
+    renderImage(cam, triangles, "task3_before.ppm");
+    cam.dolly(-1.0f);
+    cam.truck(0.5f);
+    cam.tilt(15);
+    renderImage(cam, triangles, "task3_after.ppm");
 
-    cam = {};
-    renderFrame("task4_before.ppm", cam, tris, width, height);
+    renderImage(cam, triangles, "task4_before.ppm");
     cam.pan(15);
-    cam.tilt(-10);
-    cam.truck(1);
-    renderFrame("task4_after.ppm", cam, tris, width, height);
+    cam.pedestal(0.3f);
+    cam.roll(10);
+    renderImage(cam, triangles, "task4_after.ppm");
 
-    cam = {};
-    for (int i = 0; i < 72; i++)
+    for (int i = 0; i < 72; ++i)
     {
-        cam.pan(5);
-        std::string fname = "frames/frame_" + std::to_string(i) + ".ppm";
-        renderFrame(fname, cam, tris, width, height);
+        std::ostringstream fname;
+        fname << "task5_frame_" << std::setw(2) << std::setfill('0') << i << ".ppm";
+        renderImage(cam, triangles, fname.str());
+        cam.pan(5.0f);
     }
 
     return 0;
