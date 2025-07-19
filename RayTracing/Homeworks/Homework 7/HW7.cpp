@@ -3,175 +3,193 @@
 #include <vector>
 #include <cmath>
 #include <limits>
+#include <sstream>
+#include <iomanip>
+#include <cstdio>
 #include "rapidjson/document.h"
-#include "rapidjson/istreamwrapper.h"
+#include "rapidjson/filereadstream.h"
 
-struct Vec3
+const float PI = 3.14159265f;
+
+struct Vector3
 {
     float x, y, z;
-    Vec3 operator-(const Vec3 &b) const { return {x - b.x, y - b.y, z - b.z}; }
-    Vec3 operator+(const Vec3 &b) const { return {x + b.x, y + b.y, z + b.z}; }
-    Vec3 operator*(float s) const { return {x * s, y * s, z * s}; }
-    float dot(const Vec3 &b) const { return x * b.x + y * b.y + z * b.z; }
-    Vec3 cross(const Vec3 &b) const
+
+    Vector3 operator-(const Vector3 &v) const { return {x - v.x, y - v.y, z - v.z}; }
+    Vector3 operator+(const Vector3 &v) const { return {x + v.x, y + v.y, z + v.z}; }
+    Vector3 operator*(float t) const { return {x * t, y * t, z * t}; }
+
+    float dot(const Vector3 &v) const { return x * v.x + y * v.y + z * v.z; }
+
+    Vector3 cross(const Vector3 &v) const
     {
         return {
-            y * b.z - z * b.y,
-            z * b.x - x * b.z,
-            x * b.y - y * b.x};
+            y * v.z - z * v.y,
+            z * v.x - x * v.z,
+            x * v.y - y * v.x};
     }
-    Vec3 normalize() const
-    {
-        float len = std::sqrt(x * x + y * y + z * z);
-        return {x / len, y / len, z / len};
-    }
-};
 
-struct Ray
-{
-    Vec3 origin, direction;
+    Vector3 normalize() const
+    {
+        float mag = std::sqrt(x * x + y * y + z * z);
+        return {x / mag, y / mag, z / mag};
+    }
 };
 
 struct Triangle
 {
-    Vec3 v0, v1, v2;
+    Vector3 v0, v1, v2;
+    int r, g, b;
 };
 
-bool intersect(const Ray &ray, const Triangle &tri, float &tOut)
+bool intersectRayTriangle(const Vector3 &origin, const Vector3 &dir, const Triangle &tri, float &tOut)
 {
-    const float EPS = 1e-6f;
-    Vec3 e1 = tri.v1 - tri.v0;
-    Vec3 e2 = tri.v2 - tri.v0;
-    Vec3 p = ray.direction.cross(e2);
-    float det = e1.dot(p);
-    if (fabs(det) < EPS)
+    Vector3 e0 = tri.v1 - tri.v0;
+    Vector3 e1 = tri.v2 - tri.v0;
+    Vector3 normal = e0.cross(e1).normalize();
+
+    float dotNR = normal.dot(dir);
+    if (std::abs(dotNR) < 1e-5)
         return false;
-    float invDet = 1.0f / det;
-    Vec3 tvec = ray.origin - tri.v0;
-    float u = tvec.dot(p) * invDet;
-    if (u < 0.0f || u > 1.0f)
+
+    float dist = normal.dot(tri.v0 - origin);
+    if (dist / dotNR < 0)
         return false;
-    Vec3 q = tvec.cross(e1);
-    float v = ray.direction.dot(q) * invDet;
-    if (v < 0.0f || u + v > 1.0f)
+
+    float t = dist / dotNR;
+    Vector3 P = origin + dir * t;
+
+    Vector3 V0P = P - tri.v0;
+    Vector3 V1P = P - tri.v1;
+    Vector3 V2P = P - tri.v2;
+
+    Vector3 E0 = tri.v1 - tri.v0;
+    Vector3 E1 = tri.v2 - tri.v1;
+    Vector3 E2 = tri.v0 - tri.v2;
+
+    if (normal.dot(E0.cross(V0P)) < 0)
         return false;
-    float t = e2.dot(q) * invDet;
-    if (t > EPS)
-    {
-        tOut = t;
-        return true;
-    }
-    return false;
+    if (normal.dot(E1.cross(V1P)) < 0)
+        return false;
+    if (normal.dot(E2.cross(V2P)) < 0)
+        return false;
+
+    tOut = t;
+    return true;
 }
 
-void savePPM(const std::string &fn,
-             const std::vector<std::vector<Vec3>> &img,
-             int w, int h)
-{
-    std::ofstream ofs(fn);
-    ofs << "P3\n"
-        << w << " " << h << "\n255\n";
-    for (int y = 0; y < h; ++y)
-    {
-        for (int x = 0; x < w; ++x)
-        {
-            Vec3 c = img[y][x];
-            int r = std::min(255, int(c.x * 255));
-            int g = std::min(255, int(c.y * 255));
-            int b = std::min(255, int(c.z * 255));
-            ofs << r << " " << g << " " << b << "\n";
-        }
-    }
-}
-
-int main()
+bool loadScene(const std::string &path,
+               std::vector<Triangle> &trianglesOut,
+               Vector3 &camPosOut,
+               Vector3 &bgColorOut,
+               int &widthOut,
+               int &heightOut,
+               Vector3 &rightOut,
+               Vector3 &upOut,
+               Vector3 &forwardOut)
 {
     using namespace rapidjson;
-    std::ifstream ifs("scene0.crtscene");
-    if (!ifs.is_open())
-    {
-        std::cerr << "Error opening scene file.\n";
-        return 1;
-    }
-    IStreamWrapper isw(ifs);
+
+    FILE *fp = fopen(path.c_str(), "r");
+    if (!fp)
+        return false;
+
+    char buffer[262144];
+    FileReadStream is(fp, buffer, sizeof(buffer));
+    fclose(fp);
+
     Document doc;
-    doc.ParseStream(isw);
+    doc.ParseStream(is);
     if (doc.HasParseError())
-    {
-        std::cerr << "Error parsing JSON.\n";
-        return 1;
-    }
-    const auto &settings = doc["settings"];
-    const auto &imgSet = settings["image_settings"];
-    int width = imgSet["width"].GetInt();
-    int height = imgSet["height"].GetInt();
-    const auto &camera = doc["camera"];
-    Vec3 camPos = {
-        camera["position"][0].GetFloat(),
-        camera["position"][1].GetFloat(),
-        camera["position"][2].GetFloat()};
+        return false;
 
-    if (!doc.HasMember("objects") || !doc["objects"].IsArray())
+    auto &bg = doc["settings"]["background_color"];
+    bgColorOut = {bg[0].GetFloat(), bg[1].GetFloat(), bg[2].GetFloat()};
+
+    widthOut = doc["settings"]["image_settings"]["width"].GetInt();
+    heightOut = doc["settings"]["image_settings"]["height"].GetInt();
+
+    auto &pos = doc["camera"]["position"];
+    camPosOut = {pos[0].GetFloat(), pos[1].GetFloat(), pos[2].GetFloat()};
+
+    auto &matrix = doc["camera"]["matrix"];
+    rightOut = {matrix[0].GetFloat(), matrix[1].GetFloat(), matrix[2].GetFloat()};
+    upOut = {matrix[3].GetFloat(), matrix[4].GetFloat(), matrix[5].GetFloat()};
+    forwardOut = {matrix[6].GetFloat(), matrix[7].GetFloat(), matrix[8].GetFloat()};
+    forwardOut = forwardOut * -1;
+
+    auto &objects = doc["objects"];
+    for (auto &obj : objects.GetArray())
     {
-        std::cerr << "'objects' missing or invalid.\n";
-        return 1;
-    }
-    std::vector<Triangle> trisList;
-    for (const auto &obj : doc["objects"].GetArray())
-    {
-        const auto &verts = obj["vertices"].GetArray();
-        if (verts.Size() % 3 != 0)
-        {
-            std::cerr << "Vertices array size not multiple of 3.\n";
-            return 1;
-        }
-        std::vector<Vec3> vlist;
-        vlist.reserve(verts.Size() / 3);
+        auto &verts = obj["vertices"];
+        auto &tris = obj["triangles"];
+
+        std::vector<Vector3> vertices;
         for (SizeType i = 0; i < verts.Size(); i += 3)
-        {
-            vlist.push_back({verts[i].GetFloat(),
-                             verts[i + 1].GetFloat(),
-                             verts[i + 2].GetFloat()});
-        }
+            vertices.push_back({verts[i].GetFloat(), verts[i + 1].GetFloat(), verts[i + 2].GetFloat()});
 
-        const auto &tidx = obj["triangles"].GetArray();
-        for (SizeType i = 0; i < tidx.Size(); i += 3)
-        {
-            int i0 = tidx[i].GetInt();
-            int i1 = tidx[i + 1].GetInt();
-            int i2 = tidx[i + 2].GetInt();
-            trisList.push_back({vlist[i0], vlist[i1], vlist[i2]});
-        }
+        for (SizeType i = 0; i < tris.Size(); i += 3)
+            trianglesOut.push_back({vertices[tris[i].GetInt()],
+                                    vertices[tris[i + 1].GetInt()],
+                                    vertices[tris[i + 2].GetInt()],
+                                    255, 255, 255});
     }
 
-    std::vector<std::vector<Vec3>> image(height, std::vector<Vec3>(width, {0, 0, 0}));
+    return true;
+}
+
+void renderScene(const std::string &jsonPath, const std::string &outputImage)
+{
+    std::vector<Triangle> triangles;
+    Vector3 camPos, bgColor, right, up, forward;
+    int width = 0, height = 0;
+
+    if (!loadScene(jsonPath, triangles, camPos, bgColor, width, height, right, up, forward))
+    {
+        std::cerr << "Failed to load scene: " << jsonPath << "\n";
+        return;
+    }
+
+    std::ofstream image(outputImage);
+    image << "P3\n"
+          << width << " " << height << "\n255\n";
+    float aspectRatio = float(width) / height;
+
     for (int y = 0; y < height; ++y)
     {
         for (int x = 0; x < width; ++x)
         {
-            float u = (x + 0.5f) / float(width);
-            float v = (y + 0.5f) / float(height);
-            Vec3 dir = Vec3{(u - 0.5f) * 2, (v - 0.5f) * 2, -1}.normalize();
-            Ray ray{camPos, dir};
+            float px = (x + 0.5f) / width;
+            float py = (y + 0.5f) / height;
+            float screenX = (2.0f * px - 1.0f) * aspectRatio;
+            float screenY = 1.0f - 2.0f * py;
 
-            float bestT = std::numeric_limits<float>::max();
-            bool hit = false;
-            for (auto &T : trisList)
+            Vector3 rayDir = (forward + right * screenX + up * screenY).normalize();
+
+            float closestT = std::numeric_limits<float>::max();
+            int r = int(bgColor.x * 255), g = int(bgColor.y * 255), b = int(bgColor.z * 255);
+
+            for (const auto &tri : triangles)
             {
                 float t;
-                if (intersect(ray, T, t) && t < bestT)
+                if (intersectRayTriangle(camPos, rayDir, tri, t) && t < closestT)
                 {
-                    bestT = t;
-                    hit = true;
+                    closestT = t;
+                    r = tri.r;
+                    g = tri.g;
+                    b = tri.b;
                 }
             }
-            if (hit)
-            {
-                image[y][x] = {1.0f, 0.5f, 0.2f};
-            }
+            image << r << " " << g << " " << b << "\n";
         }
     }
 
-    savePPM("output.ppm", image, width, height);
+    image.close();
+    std::cout << "Rendered: " << outputImage << "\n";
+}
+
+int main()
+{
+    renderScene("scene4.crtscene", "scene4_output.ppm");
     return 0;
 }
