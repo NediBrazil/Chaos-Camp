@@ -190,6 +190,9 @@ void renderScene(const std::string &jsonPath, const std::string &outputImage)
 
 int main()
 {
+    renderScene("scene1.crtscene", "scene1_output.ppm");
+    renderScene("scene2.crtscene", "scene2_output.ppm");
+    renderScene("scene3.crtscene", "scene3_output.ppm");
     renderScene("scene4.crtscene", "scene4_output.ppm");
     return 0;
 }

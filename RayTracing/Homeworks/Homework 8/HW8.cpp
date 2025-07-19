@@ -1,181 +1,262 @@
 #include <iostream>
 #include <fstream>
-#include <cmath>
 #include <vector>
+#include <cmath>
 #include <limits>
+#include <sstream>
+#include <iomanip>
 #include <cstdio>
-#include <string>
 #include "rapidjson/document.h"
 #include "rapidjson/filereadstream.h"
 
-using namespace rapidjson;
-using namespace std;
+const float PI = 3.14159265f;
 
-struct Vec3
+struct Vector3
 {
     float x, y, z;
-    Vec3() : x(0), y(0), z(0) {}
-    Vec3(float x, float y, float z) : x(x), y(y), z(z) {}
-    Vec3 operator+(const Vec3 &b) const { return Vec3(x + b.x, y + b.y, z + b.z); }
-    Vec3 operator-(const Vec3 &b) const { return Vec3(x - b.x, y - b.y, z - b.z); }
-    Vec3 operator*(float s) const { return Vec3(x * s, y * s, z * s); }
-    Vec3 operator/(float s) const { return Vec3(x / s, y / s, z / s); }
-    Vec3 operator-() const { return Vec3(-x, -y, -z); }
-    float dot(const Vec3 &b) const { return x * b.x + y * b.y + z * b.z; }
-    Vec3 cross(const Vec3 &b) const { return Vec3(y * b.z - z * b.y, z * b.x - x * b.z, x * b.y - y * b.x); }
-    Vec3 normalize() const
-    {
-        float len = sqrt(dot(*this));
-        return *this / len;
-    }
-};
 
-struct Ray
-{
-    Vec3 origin, dir;
-    Ray(const Vec3 &o, const Vec3 &d) : origin(o), dir(d) {}
+    Vector3 operator-(const Vector3 &v) const { return {x - v.x, y - v.y, z - v.z}; }
+    Vector3 operator+(const Vector3 &v) const { return {x + v.x, y + v.y, z + v.z}; }
+    Vector3 operator*(float t) const { return {x * t, y * t, z * t}; }
+
+    float dot(const Vector3 &v) const { return x * v.x + y * v.y + z * v.z; }
+
+    Vector3 cross(const Vector3 &v) const
+    {
+        return {
+            y * v.z - z * v.y,
+            z * v.x - x * v.z,
+            x * v.y - y * v.x};
+    }
+
+    Vector3 normalize() const
+    {
+        float mag = std::sqrt(x * x + y * y + z * z);
+        return {x / mag, y / mag, z / mag};
+    }
 };
 
 struct Triangle
 {
-    Vec3 v0, v1, v2;
+    Vector3 v0, v1, v2;
+    int r, g, b;
 };
 
-bool intersectTriangle(const Ray &ray, const Vec3 &v0, const Vec3 &v1, const Vec3 &v2, float &t, Vec3 &normal)
+struct Light
 {
-    const float EPSILON = 1e-6;
-    Vec3 edge1 = v1 - v0;
-    Vec3 edge2 = v2 - v0;
-    Vec3 h = ray.dir.cross(edge2);
-    float a = edge1.dot(h);
-    if (abs(a) < EPSILON)
+    Vector3 position;
+    float intensity;
+};
+
+bool intersectRayTriangle(const Vector3 &origin, const Vector3 &dir, const Triangle &tri, float &tOut)
+{
+    Vector3 e0 = tri.v1 - tri.v0;
+    Vector3 e1 = tri.v2 - tri.v0;
+    Vector3 normal = e0.cross(e1).normalize();
+
+    float dotNR = normal.dot(dir);
+    if (std::abs(dotNR) < 1e-5)
         return false;
-    float f = 1.0 / a;
-    Vec3 s = ray.origin - v0;
-    float u = f * s.dot(h);
-    if (u < 0.0 || u > 1.0)
+
+    float dist = normal.dot(tri.v0 - origin);
+    if (dist / dotNR < 0)
         return false;
-    Vec3 q = s.cross(edge1);
-    float v = f * ray.dir.dot(q);
-    if (v < 0.0 || u + v > 1.0)
+
+    float t = dist / dotNR;
+    Vector3 P = origin + dir * t;
+
+    Vector3 V0P = P - tri.v0;
+    Vector3 V1P = P - tri.v1;
+    Vector3 V2P = P - tri.v2;
+
+    Vector3 E0 = tri.v1 - tri.v0;
+    Vector3 E1 = tri.v2 - tri.v1;
+    Vector3 E2 = tri.v0 - tri.v2;
+
+    if (normal.dot(E0.cross(V0P)) < 0)
         return false;
-    t = f * edge2.dot(q);
-    if (t > EPSILON)
-    {
-        normal = edge1.cross(edge2).normalize();
-        return true;
-    }
-    return false;
+    if (normal.dot(E1.cross(V1P)) < 0)
+        return false;
+    if (normal.dot(E2.cross(V2P)) < 0)
+        return false;
+
+    tOut = t;
+    return true;
 }
 
-void writePPM(const string &filename, const vector<Vec3> &framebuffer, int width, int height)
+bool loadScene(const std::string &path,
+               std::vector<Triangle> &trianglesOut,
+               Vector3 &camPosOut,
+               Vector3 &bgColorOut,
+               int &widthOut,
+               int &heightOut,
+               Vector3 &rightOut,
+               Vector3 &upOut,
+               Vector3 &forwardOut,
+               std::vector<Light> &lightsOut)
 {
-    ofstream ofs(filename);
-    ofs << "P3\n"
-        << width << " " << height << "\n255\n";
-    for (const auto &color : framebuffer)
-    {
-        int r = min(255, max(0, int(color.x * 255)));
-        int g = min(255, max(0, int(color.y * 255)));
-        int b = min(255, max(0, int(color.z * 255)));
-        ofs << r << " " << g << " " << b << "\n";
-    }
-    ofs.close();
-}
+    using namespace rapidjson;
 
-int main(int argc, char *argv[])
-{
-    if (argc < 2)
-    {
-        cout << "Usage: ./HW8 <scene_file.crtscene>\n";
-        return 1;
-    }
-
-    FILE *fp = fopen(argv[1], "r");
+    FILE *fp = fopen(path.c_str(), "r");
     if (!fp)
-    {
-        cerr << "Failed to open scene file.\n";
-        return 1;
-    }
+        return false;
 
-    char readBuffer[65536];
-    FileReadStream is(fp, readBuffer, sizeof(readBuffer));
-    Document doc;
-    doc.ParseStream(is);
+    char buffer[262144];
+    FileReadStream is(fp, buffer, sizeof(buffer));
     fclose(fp);
 
-    auto &settings = doc["settings"];
-    Vec3 background(
-        settings["background_color"][0].GetFloat(),
-        settings["background_color"][1].GetFloat(),
-        settings["background_color"][2].GetFloat());
+    Document doc;
+    doc.ParseStream(is);
+    if (doc.HasParseError())
+        return false;
 
-    int width = settings["image_settings"]["width"].GetInt();
-    int height = settings["image_settings"]["height"].GetInt();
-    vector<Vec3> framebuffer(width * height, background);
+    auto &bg = doc["settings"]["background_color"];
+    bgColorOut = {bg[0].GetFloat(), bg[1].GetFloat(), bg[2].GetFloat()};
 
-    auto &camera = doc["camera"];
-    Vec3 camPos(
-        camera["position"][0].GetFloat(),
-        camera["position"][1].GetFloat(),
-        camera["position"][2].GetFloat());
+    widthOut = doc["settings"]["image_settings"]["width"].GetInt();
+    heightOut = doc["settings"]["image_settings"]["height"].GetInt();
 
-    vector<Triangle> triangles;
-    const auto &objects = doc["objects"];
-    for (SizeType o = 0; o < objects.Size(); ++o)
+    auto &pos = doc["camera"]["position"];
+    camPosOut = {pos[0].GetFloat(), pos[1].GetFloat(), pos[2].GetFloat()};
+
+    auto &matrix = doc["camera"]["matrix"];
+    rightOut = {matrix[0].GetFloat(), matrix[1].GetFloat(), matrix[2].GetFloat()};
+    upOut = {matrix[3].GetFloat(), matrix[4].GetFloat(), matrix[5].GetFloat()};
+    forwardOut = {matrix[6].GetFloat(), matrix[7].GetFloat(), matrix[8].GetFloat()};
+    forwardOut = forwardOut * -1;
+
+    auto &objects = doc["objects"];
+    for (auto &obj : objects.GetArray())
     {
-        const auto &obj = objects[o];
-        vector<Vec3> vertices;
-        for (SizeType i = 0; i < obj["vertices"].Size(); i += 3)
+        auto &verts = obj["vertices"];
+        auto &tris = obj["triangles"];
+
+        std::vector<Vector3> vertices;
+        for (SizeType i = 0; i < verts.Size(); i += 3)
+            vertices.push_back({verts[i].GetFloat(), verts[i + 1].GetFloat(), verts[i + 2].GetFloat()});
+
+        for (SizeType i = 0; i < tris.Size(); i += 3)
+            trianglesOut.push_back({vertices[tris[i].GetInt()],
+                                    vertices[tris[i + 1].GetInt()],
+                                    vertices[tris[i + 2].GetInt()],
+                                    255, 255, 255});
+    }
+
+    if (doc.HasMember("lights"))
+    {
+        for (auto &light : doc["lights"].GetArray())
         {
-            vertices.emplace_back(
-                obj["vertices"][i].GetFloat(),
-                obj["vertices"][i + 1].GetFloat(),
-                obj["vertices"][i + 2].GetFloat());
-        }
-        for (SizeType i = 0; i < obj["triangles"].Size(); i += 3)
-        {
-            int i0 = obj["triangles"][i].GetInt();
-            int i1 = obj["triangles"][i + 1].GetInt();
-            int i2 = obj["triangles"][i + 2].GetInt();
-            triangles.push_back({vertices[i0], vertices[i1], vertices[i2]});
+            auto &pos = light["position"];
+            float intensity = light["intensity"].GetFloat();
+            lightsOut.push_back({{pos[0].GetFloat(), pos[1].GetFloat(), pos[2].GetFloat()}, intensity});
         }
     }
 
-    Vec3 lightDir = Vec3(1, 1, -1).normalize();
-    Vec3 albedo(0.8, 0.6, 0.4);
+    return true;
+}
+
+void renderScene(const std::string &jsonPath, const std::string &outputImage)
+{
+    std::vector<Triangle> triangles;
+    std::vector<Light> lights;
+    Vector3 camPos, bgColor, right, up, forward;
+    int width = 0, height = 0;
+
+    if (!loadScene(jsonPath, triangles, camPos, bgColor, width, height, right, up, forward, lights))
+    {
+        std::cerr << "Failed to load scene: " << jsonPath << "\n";
+        return;
+    }
+
+    std::ofstream image(outputImage);
+    image << "P3\n"
+          << width << " " << height << "\n255\n";
+    float aspectRatio = float(width) / height;
 
     for (int y = 0; y < height; ++y)
     {
         for (int x = 0; x < width; ++x)
         {
-            float u = (2 * (x + 0.5f) / float(width) - 1) * (width / float(height));
-            float v = 1 - 2 * (y + 0.5f) / float(height);
-            Vec3 dir = Vec3(u, v, -1).normalize();
-            Ray ray(camPos, dir);
+            float px = (x + 0.5f) / width;
+            float py = (y + 0.5f) / height;
+            float screenX = (2.0f * px - 1.0f) * aspectRatio;
+            float screenY = 1.0f - 2.0f * py;
 
-            float closestT = numeric_limits<float>::max();
-            Vec3 finalColor = background;
+            Vector3 rayDir = (forward + right * screenX + up * screenY).normalize();
+
+            float closestT = std::numeric_limits<float>::max();
+            const Triangle *hitTri = nullptr;
+
             for (const auto &tri : triangles)
             {
                 float t;
-                Vec3 normal;
-                if (intersectTriangle(ray, tri.v0, tri.v1, tri.v2, t, normal))
+                if (intersectRayTriangle(camPos, rayDir, tri, t) && t < closestT)
                 {
-                    if (t < closestT)
-                    {
-                        closestT = t;
-                        float diff = max(0.0f, normal.dot(-lightDir));
-                        finalColor = albedo * diff;
-                    }
+                    closestT = t;
+                    hitTri = &tri;
                 }
             }
-            framebuffer[y * width + x] = finalColor;
+
+            int r = int(bgColor.x * 255), g = int(bgColor.y * 255), b = int(bgColor.z * 255);
+
+            if (hitTri)
+            {
+                Vector3 hitPoint = camPos + rayDir * closestT;
+                Vector3 normal = (hitTri->v1 - hitTri->v0).cross(hitTri->v2 - hitTri->v0).normalize();
+                Vector3 color = {0, 0, 0};
+                Vector3 albedo = {1, 1, 1};
+
+                for (const auto &light : lights)
+                {
+                    Vector3 lightDir = (light.position - hitPoint).normalize();
+
+                    bool inShadow = false;
+                    float distToLight = (light.position - hitPoint).dot(light.position - hitPoint);
+                    for (const auto &otherTri : triangles)
+                    {
+                        float shadowT;
+                        if (&otherTri != hitTri &&
+                            intersectRayTriangle(hitPoint + normal * 0.001f, lightDir, otherTri, shadowT) &&
+                            shadowT * shadowT < distToLight)
+                        {
+                            inShadow = true;
+                            break;
+                        }
+                    }
+
+                    if (!inShadow)
+                    {
+                        float NdotL = std::max(0.0f, normal.dot(lightDir));
+                        float distance2 = (light.position - hitPoint).dot(light.position - hitPoint);
+                        float attenuation = light.intensity / (4.0f * PI * distance2);
+
+                        Vector3 lightColor = albedo * NdotL * attenuation;
+                        color = color + lightColor;
+                    }
+                }
+
+                color.x = std::min(1.0f, color.x);
+                color.y = std::min(1.0f, color.y);
+                color.z = std::min(1.0f, color.z);
+
+                r = int(color.x * 255);
+                g = int(color.y * 255);
+                b = int(color.z * 255);
+            }
+
+            image << r << " " << g << " " << b << "\n";
         }
     }
 
-    string outFile = string(argv[1]) + ".ppm";
-    writePPM(outFile, framebuffer, width, height);
-    cout << "Saved image: " << outFile << "\n";
+    image.close();
+    std::cout << "Rendered: " << outputImage << "\n";
+}
+
+int main()
+{
+    renderScene("scene0.crtscene", "scene0_output.ppm");
+    renderScene("scene1.crtscene", "scene1_output.ppm");
+    renderScene("scene2.crtscene", "scene2_output.ppm");
+    renderScene("scene3.crtscene", "scene3_output.ppm");
     return 0;
 }
