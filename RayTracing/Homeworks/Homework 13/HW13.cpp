@@ -16,7 +16,7 @@
 
 const float PI = 3.14159265f;
 const int MAX_BOUNCES = 1;
-const int BUCKET_SIZE = 32;
+int BUCKET_SIZE;
 const int MAX_THREADS = std::thread::hardware_concurrency();
 
 struct Vector3
@@ -174,6 +174,7 @@ bool loadScene(const std::string &path,
     bgColor = {b[0].GetFloat(), b[1].GetFloat(), b[2].GetFloat()};
     width = d["settings"]["image_settings"]["width"].GetInt();
     height = d["settings"]["image_settings"]["height"].GetInt();
+    BUCKET_SIZE = d["settings"]["image_settings"]["bucket_size"].GetInt();
     auto &cp = d["camera"]["position"];
     camPos = {cp[0].GetFloat(), cp[1].GetFloat(), cp[2].GetFloat()};
     auto &cm = d["camera"]["matrix"];
