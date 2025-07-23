@@ -78,6 +78,23 @@ bool intersectRayTriangle(const Vector3 &origin, const Vector3 &dir, const Trian
     return true;
 }
 
+Vector3 interpolateNormal(const Triangle &tri, const Vector3 &P)
+{
+    Vector3 v0 = tri.v1 - tri.v0;
+    Vector3 v1 = tri.v2 - tri.v0;
+    Vector3 v2 = P - tri.v0;
+    float d00 = v0.dot(v0);
+    float d01 = v0.dot(v1);
+    float d11 = v1.dot(v1);
+    float d20 = v2.dot(v0);
+    float d21 = v2.dot(v1);
+    float denom = d00 * d11 - d01 * d01;
+    float v = (d11 * d20 - d01 * d21) / denom;
+    float w = (d00 * d21 - d01 * d20) / denom;
+    float u = 1.0f - v - w;
+    return (tri.n0 * u + tri.n1 * v + tri.n2 * w).normalize();
+}
+
 bool loadScene(const std::string &path,
                std::vector<Triangle> &triangles,
                std::vector<Material> &materials,
@@ -201,8 +218,7 @@ Vector3 traceRay(const Vector3 &orig, const Vector3 &dir,
     Vector3 N;
     if (hit->material.smooth)
     {
-        N = (hit->n0 + hit->n1 + hit->n2) * (1.0f / 3.0f);
-        N = N.normalize();
+        N = interpolateNormal(*hit, P);
     }
     else
     {
