@@ -200,8 +200,11 @@ bool traverseKD(const KDNode *node, const Vector3 &orig, const Vector3 &dir, con
     return h1 || h2;
 }
 
-Vector3 traceRay(const Vector3 &orig, const Vector3 &dir, const KDNode *root, const std::vector<Light> &lights, const Vector3 &bg, int depth = 0)
+Vector3 traceRay(const Vector3 &orig, const Vector3 &dir, const KDNode *root, const std::vector<Light> &lights, const Vector3 &bg, const AABB &sceneBox, int depth = 0)
 {
+    float tmin, tmax;
+    if (!sceneBox.intersect(orig, dir, tmin, tmax))
+        return bg;
     if (depth > MAX_BOUNCES)
         return bg;
     float tHit = std::numeric_limits<float>::max();
@@ -229,7 +232,7 @@ Vector3 traceRay(const Vector3 &orig, const Vector3 &dir, const KDNode *root, co
     if (hit->material.type == REFLECTIVE)
     {
         Vector3 rd = (dir - N * 2 * dir.dot(N)).normalize();
-        Vector3 rc = traceRay(P + N * 0.001f, rd, root, lights, bg, depth + 1);
+        Vector3 rc = traceRay(P + N * 0.001f, rd, root, lights, bg, sceneBox, depth + 1);
         col = col + rc * hit->material.albedo;
     }
     return {std::min(1.0f, col.x), std::min(1.0f, col.y), std::min(1.0f, col.z)};
@@ -302,13 +305,6 @@ bool loadScene(const std::string &path,
             verts.push_back(vert);
             sceneBox.expand(vert);
         }
-        std::vector<Vector3> norms;
-        if (o.HasMember("normals"))
-        {
-            auto &n = o["normals"];
-            for (int i = 0; i < n.Size(); i += 3)
-                norms.push_back({n[i].GetFloat(), n[i + 1].GetFloat(), n[i + 2].GetFloat()});
-        }
         auto &tris = o["triangles"];
         for (int i = 0; i < tris.Size(); i += 3)
         {
@@ -318,17 +314,8 @@ bool loadScene(const std::string &path,
             tri.v1 = verts[i1];
             tri.v2 = verts[i2];
             tri.material = materials[mid];
-            if (!norms.empty())
-            {
-                tri.n0 = norms[i0];
-                tri.n1 = norms[i1];
-                tri.n2 = norms[i2];
-            }
-            else
-            {
-                Vector3 N = (tri.v1 - tri.v0).cross(tri.v2 - tri.v0).normalize();
-                tri.n0 = tri.n1 = tri.n2 = N;
-            }
+            Vector3 N = (tri.v1 - tri.v0).cross(tri.v2 - tri.v0).normalize();
+            tri.n0 = tri.n1 = tri.n2 = N;
             triangles.push_back(tri);
         }
     }
@@ -379,7 +366,7 @@ void renderScene(const std::string &in, const std::string &out)
                     float sx = (2 * px - 1) * (float(w) / h);
                     float sy = 1 - 2 * py;
                     Vector3 dir = (forward + right * sx + up * sy).normalize();
-                    framebuffer[y][x] = traceRay(cam, dir, kdRoot, lights, bg, 0);
+                    framebuffer[y][x] = traceRay(cam, dir, kdRoot, lights, bg, sceneBox, 0);
                 }
             }
         }
