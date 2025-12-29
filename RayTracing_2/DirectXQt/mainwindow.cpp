@@ -19,8 +19,6 @@ MainWindow::MainWindow(QWidget* parent)
     layout->addWidget(viewport);
     layout->addWidget(fpsLabel);
 
-    HWND hwnd = (HWND)viewport->winId();
-    renderer.initialize(hwnd, 800, 600);
 
     connect(&renderTimer, &QTimer::timeout, this, &MainWindow::renderToQt);
     renderTimer.start(0);
@@ -34,6 +32,20 @@ MainWindow::MainWindow(QWidget* parent)
 
 void MainWindow::renderToQt()
 {
+    if (!initialized)
+    {
+        HWND hwnd = (HWND)viewport->winId();
+        if (IsWindow(hwnd))
+        {
+            initialized = renderer.initialize(
+                hwnd,
+                viewport->width(),
+                viewport->height()
+                );
+        }
+        return;
+    }
+
     renderer.renderFrame();
 
     unsigned char* p = renderer.getBackBufferCPU();
@@ -43,9 +55,10 @@ void MainWindow::renderToQt()
         p,
         renderer.getWidth(),
         renderer.getHeight(),
+        renderer.getRowPitch(),
         QImage::Format_RGBA8888);
 
     viewport->updateFrame(img);
-
     frameCounter++;
 }
+

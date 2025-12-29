@@ -5,12 +5,10 @@ project(DirectXQt LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Enable Qt MOC, RCC, UIC
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-# Qt
 find_package(Qt6 REQUIRED COMPONENTS Widgets Gui)
 
 set(SOURCES
@@ -26,8 +24,9 @@ set(HEADERS
     DXRenderer.h
 )
 
+include_directories(${CMAKE_SOURCE_DIR}/external/d3dx12)
+
 qt_add_executable(DirectXQt
-    MANUAL_FINALIZATION
     ${SOURCES}
     ${HEADERS}
     mainwindow.ui
@@ -36,8 +35,11 @@ qt_add_executable(DirectXQt
 target_link_libraries(DirectXQt
     PRIVATE
         Qt6::Widgets
-        dxgi
-        d3d12
+        Qt6::Gui
+        d3d12.lib
+        dxgi.lib
+        d3dcompiler.lib
+        dxguid.lib
 )
 
 qt_finalize_executable(DirectXQt)

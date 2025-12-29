@@ -17,6 +17,7 @@ private:
     DXRenderer renderer;
     ViewportWidget* viewport;
     QLabel* fpsLabel;
+    bool initialized = false;
 
     QTimer renderTimer;
     QTimer fpsTimer;

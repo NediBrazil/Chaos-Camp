@@ -4,6 +4,7 @@
 ViewportWidget::ViewportWidget(QWidget* parent)
     : QWidget(parent)
 {
+    setAttribute(Qt::WA_NativeWindow);
 }
 
 void ViewportWidget::updateFrame(const QImage& img)
@@ -15,5 +16,7 @@ void ViewportWidget::updateFrame(const QImage& img)
 void ViewportWidget::paintEvent(QPaintEvent*)
 {
     QPainter p(this);
-    p.drawImage(rect(), frame);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, false);
+    p.drawImage(rect(), frame, frame.rect());
 }
+

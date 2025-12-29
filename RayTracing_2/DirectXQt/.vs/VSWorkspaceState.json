@@ -1,6 +1,15 @@
 {
+  "OutputFoldersPerTargetSystem": {
+    "Local Machine": [
+      "out\\build\\x64-Debug",
+      "out\\install\\x64-Debug"
+    ]
+  },
   "ExpandedNodes": [
-    ""
+    "",
+    "\\build",
+    "\\build\\Desktop_Qt_6_10_1_MSVC2022_64bit-Debug"
   ],
+  "SelectedNode": "\\build\\Desktop_Qt_6_10_1_MSVC2022_64bit-Debug\\TrianglePS.hlsl",
   "PreviewInSolutionExplorer": false
 }
