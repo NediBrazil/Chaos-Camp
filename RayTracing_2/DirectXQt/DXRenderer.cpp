@@ -1,7 +1,9 @@
 #include "DXRenderer.h"
+#include "DXRendererRayTracing.h"
 #include <d3dcompiler.h>
 #include <cstring>
 #include "d3dx12.h"
+#include <dxgi1_6.h>
 #pragma comment(lib, "dxgi.lib")
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "d3dcompiler.lib")
@@ -29,7 +31,6 @@ DXRenderer::DXRenderer() {}
 DXRenderer::~DXRenderer()
 {
     if (fenceEvent) CloseHandle(fenceEvent);
-
     if (mappedPtr && readbackBuffer)
         readbackBuffer->Unmap(0, nullptr);
 
@@ -59,6 +60,9 @@ void DXRenderer::safeRelease(IUnknown*& p)
     }
 }
 
+void DXRenderer::setRenderMode(RenderMode mode){
+    renderMode = mode;
+}
 
 bool DXRenderer::loadShader(const wchar_t* filename, ID3DBlob** blob)
 {
@@ -103,24 +107,58 @@ bool DXRenderer::loadShader(const wchar_t* filename, ID3DBlob** blob)
     *blob = b;
     return true;
 }
-
 bool DXRenderer::createFactoryAndDevice()
 {
-
-    HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&factory));
-    if (FAILED(hr)) { PrintHR("CreateDXGIFactory1 FAILED", hr); return false; }
-
-    if (FAILED(factory->EnumAdapters1(0, &adapter)))
+    #if defined(_DEBUG)
+    // Enable the debug layer
+    ID3D12Debug* debugController = nullptr;
+    if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
     {
-        OutputDebugStringA("EnumAdapters1 failed or no adapter found; using default adapter\n");
-        adapter = nullptr;
+        debugController->EnableDebugLayer();
+        debugController->Release();
+    }
+    #endif
+    HRESULT hr = CreateDXGIFactory2(0, IID_PPV_ARGS(&factory));
+    if (FAILED(hr))
+        return false;
+
+    IDXGIFactory6* factory6 = nullptr;
+    hr = factory->QueryInterface(IID_PPV_ARGS(&factory6));
+    if (FAILED(hr))
+        return false;
+
+    IDXGIAdapter1* adapter = nullptr;
+    hr = factory6->EnumAdapterByGpuPreference(
+        0,
+        DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+        IID_PPV_ARGS(&adapter));
+
+    if (FAILED(hr))
+    {
+        factory6->Release();
+        return false;
     }
 
-    hr = D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device));
-    if (FAILED(hr)) { PrintHR("D3D12CreateDevice FAILED", hr); return false; }
+    DXGI_ADAPTER_DESC1 desc;
+    adapter->GetDesc1(&desc);
 
-    return true;
+    char name[256];
+    wcstombs_s(nullptr, name, desc.Description, 256);
+    OutputDebugStringA("Using adapter: ");
+    OutputDebugStringA(name);
+    OutputDebugStringA("\n");
+
+    hr = D3D12CreateDevice(
+        adapter,
+        D3D_FEATURE_LEVEL_12_1,
+        IID_PPV_ARGS(&device));
+
+    adapter->Release();
+    factory6->Release();
+
+    return SUCCEEDED(hr);
 }
+
 
 bool DXRenderer::createCommandObjects()
 {
@@ -323,6 +361,9 @@ bool DXRenderer::initialize(HWND hwnd, int w, int h)
     if (!createVertexBuffer()) return false;
     if (!createReadbackBuffer()) return false;
 
+    rayTracing = new DXRendererRayTracing();
+    rayTracing->initialize(device, queue, width, height);
+    setRenderMode(RenderMode::RayTracing);
     return true;
 }
 
@@ -341,7 +382,7 @@ void DXRenderer::waitForGpu()
 }
 
 
-void DXRenderer::renderFrame()
+void DXRenderer::renderRaster()
 {
     HRESULT hr = allocator->Reset();
     if (FAILED(hr)) { PrintHR("allocator->Reset FAILED", hr); return; }
@@ -421,7 +462,72 @@ void DXRenderer::renderFrame()
     backBufferIndex = swapChain->GetCurrentBackBufferIndex();
 }
 
+void DXRenderer::renderRayTracing()
+{
+    allocator->Reset();
+    commandList->Reset(allocator, nullptr);
 
+    ID3D12GraphicsCommandList4* cmd4 = nullptr;
+    commandList->QueryInterface(IID_PPV_ARGS(&cmd4));
+
+    rayTracing->renderFrame(cmd4);
+
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        rayTracing->getOutputTexture(),
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+        D3D12_RESOURCE_STATE_COPY_SOURCE);
+    commandList->ResourceBarrier(1, &barrier);
+
+    barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        renderTargets[backBufferIndex],
+        D3D12_RESOURCE_STATE_PRESENT,
+        D3D12_RESOURCE_STATE_COPY_DEST);
+    commandList->ResourceBarrier(1, &barrier);
+
+
+    D3D12_TEXTURE_COPY_LOCATION src{};
+    src.pResource = rayTracing->getOutputTexture();
+    src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    src.SubresourceIndex = 0;
+
+    D3D12_TEXTURE_COPY_LOCATION dst{};
+    dst.pResource = renderTargets[backBufferIndex];
+    dst.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+    dst.SubresourceIndex = 0;
+
+    commandList->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+
+    barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        renderTargets[backBufferIndex],
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_PRESENT);
+    commandList->ResourceBarrier(1, &barrier);
+
+    barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        rayTracing->getOutputTexture(),
+        D3D12_RESOURCE_STATE_COPY_SOURCE,
+        D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    commandList->ResourceBarrier(1, &barrier);
+
+    commandList->Close();
+
+    ID3D12CommandList* lists[] = { commandList };
+    queue->ExecuteCommandLists(1, lists);
+    swapChain->Present(1, 0);
+
+    waitForGpu();
+    backBufferIndex = swapChain->GetCurrentBackBufferIndex();
+
+    cmd4->Release();
+}
+
+void DXRenderer::renderFrame()
+{
+    if (renderMode == RenderMode::RayTracing)
+        renderRayTracing();
+    else
+        renderRaster();
+}
 
 unsigned char* DXRenderer::getBackBufferCPU()
 {

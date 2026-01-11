@@ -1,14 +1,18 @@
 #include "mainwindow.h"
 #include "MainWindow.h"
 #include <QVBoxLayout>
+#include <QKeyEvent>
 
 MainWindow::MainWindow(QWidget* parent)
     : QMainWindow(parent)
 {
+    resize(1000, 600);
     QWidget* c = new QWidget;
     setCentralWidget(c);
 
     viewport = new ViewportWidget;
+    setFocusPolicy(Qt::StrongFocus);
+    viewport->setFocusPolicy(Qt::StrongFocus);
 
     viewport->setAttribute(Qt::WA_NativeWindow);
     viewport->winId();
@@ -19,7 +23,6 @@ MainWindow::MainWindow(QWidget* parent)
     layout->addWidget(viewport);
     layout->addWidget(fpsLabel);
 
-
     connect(&renderTimer, &QTimer::timeout, this, &MainWindow::renderToQt);
     renderTimer.start(0);
 
@@ -28,6 +31,15 @@ MainWindow::MainWindow(QWidget* parent)
         frameCounter = 0;
     });
     fpsTimer.start(1000);
+}
+
+void MainWindow::keyPressEvent(QKeyEvent* event)
+{
+    if (event->key() == Qt::Key_R)
+        renderer.setRenderMode(RenderMode::Raster);
+
+    if (event->key() == Qt::Key_T)
+        renderer.setRenderMode(RenderMode::RayTracing);
 }
 
 void MainWindow::renderToQt()
@@ -45,7 +57,6 @@ void MainWindow::renderToQt()
         }
         return;
     }
-
     renderer.renderFrame();
 
     unsigned char* p = renderer.getBackBufferCPU();
@@ -61,4 +72,3 @@ void MainWindow::renderToQt()
     viewport->updateFrame(img);
     frameCounter++;
 }
-

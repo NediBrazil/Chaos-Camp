@@ -16,7 +16,15 @@ void ViewportWidget::updateFrame(const QImage& img)
 void ViewportWidget::paintEvent(QPaintEvent*)
 {
     QPainter p(this);
-    p.setRenderHint(QPainter::SmoothPixmapTransform, false);
-    p.drawImage(rect(), frame, frame.rect());
-}
 
+    QSize targetSize = frame.size();
+    targetSize.scale(size(), Qt::KeepAspectRatio);
+
+    QRect targetRect(
+        QPoint(0, 0),
+        targetSize
+        );
+    targetRect.moveCenter(rect().center());
+
+    p.drawImage(targetRect, frame);
+}

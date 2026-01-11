@@ -4,6 +4,14 @@
 #include <dxgi1_4.h>
 #include "d3dx12.h"
 
+class DXRendererRayTracing;
+
+enum class RenderMode
+{
+    Raster,
+    RayTracing
+};
+
 class DXRenderer
 {
 public:
@@ -15,11 +23,16 @@ public:
     unsigned char* getBackBufferCPU();
     void unmapBackBuffer();
 
+    void setRenderMode(RenderMode mode);
+
     size_t getRowPitch() const { return rowPitch; }
     int getWidth() const { return width; }
     int getHeight() const { return height; }
 
 private:
+    void renderRaster();
+    void renderRayTracing();
+
     bool createFactoryAndDevice();
     bool createCommandObjects();
     bool createSwapChainAndRTVs(HWND hwnd);
@@ -54,11 +67,13 @@ private:
     D3D12_VERTEX_BUFFER_VIEW vertexBufferView = {};
 
     ID3D12Resource* readbackBuffer = nullptr;
-
     unsigned char* mappedPtr = nullptr;
 
     int width = 800;
     int height = 600;
     size_t rowPitch = 0;
     UINT backBufferIndex = 0;
+
+    RenderMode renderMode = RenderMode::Raster;
+    DXRendererRayTracing* rayTracing = nullptr;
 };

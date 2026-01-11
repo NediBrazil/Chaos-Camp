@@ -25,6 +25,9 @@ private:
     int frameCounter = 0;
 
     void renderToQt();
+
+protected:
+    void keyPressEvent(QKeyEvent* event) override;
 };
 
 #endif // MAINWINDOW_H

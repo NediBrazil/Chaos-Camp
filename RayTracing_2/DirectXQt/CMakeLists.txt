@@ -30,6 +30,8 @@ qt_add_executable(DirectXQt
     ${SOURCES}
     ${HEADERS}
     mainwindow.ui
+    DXRendererRayTracing.h
+    DXRendererRayTracing.h DXRendererRayTracing.cpp
 )
 
 target_link_libraries(DirectXQt
