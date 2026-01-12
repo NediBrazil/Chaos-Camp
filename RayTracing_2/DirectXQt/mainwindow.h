@@ -6,6 +6,7 @@
 #include <QLabel>
 #include "DXRenderer.h"
 #include "ViewportWidget.h"
+#include "DXRendererRayTracing.h"
 
 class MainWindow : public QMainWindow
 {
@@ -15,6 +16,7 @@ public:
 
 private:
     DXRenderer renderer;
+    DXRendererRayTracing raytracer;
     ViewportWidget* viewport;
     QLabel* fpsLabel;
     bool initialized = false;

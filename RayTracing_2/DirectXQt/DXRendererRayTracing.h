@@ -3,6 +3,8 @@
 #include <d3d12.h>
 #include <dxgi1_4.h>
 #include "d3dx12.h"
+#include <DirectXMath.h>
+#include <QDateTime>
 
 class DXRendererRayTracing
 {
@@ -10,6 +12,7 @@ public:
     bool initialize(ID3D12Device* baseDevice, ID3D12CommandQueue* baseQueue, int w, int h);
     void renderFrame(ID3D12GraphicsCommandList4* cmd);
     void cleanup();
+    void updateCamera(float dt);
     ID3D12Resource* getOutputTexture();
     ~DXRendererRayTracing();
 
@@ -27,7 +30,7 @@ private:
     void createTLASSRV();
     bool createCameraCB();
     void createCameraCBV();
-    void updateCamera();
+    void onMouseMove(float dx, float dy);
 
     ID3D12Device* device = nullptr;
     ID3D12Device5* device5 = nullptr;
@@ -52,6 +55,13 @@ private:
     ID3D12Resource* tlasScratch = nullptr;
     ID3D12Resource* tlasInstanceDesc = nullptr;
     ID3D12Resource* cameraCB = nullptr;
+
+    DirectX::XMFLOAT3 camPos = { 0.0f, 0.0f, -3.0f };
+    float yaw = 0.0f;
+    float pitch = 0.0f;
+    float fov = 60.0f;
+    qint64 lastTime = 0;
+    float getDeltaTime();
 
     int width = 0;
     int height = 0;

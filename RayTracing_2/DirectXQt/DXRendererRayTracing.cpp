@@ -1,7 +1,6 @@
 #include "DXRendererRayTracing.h"
 #include <d3dcompiler.h>
 #include <vector>
-#include <DirectXMath.h>
 
 struct CameraCB
 {
@@ -34,6 +33,13 @@ bool DXRendererRayTracing::initialize(ID3D12Device* baseDevice, ID3D12CommandQue
     if (!createStateObject()) return false;
     if (!createShaderBindingTable()) return false;
     return true;
+}
+float DXRendererRayTracing::getDeltaTime()
+{
+    qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
+    float dt = (currentTime - lastTime) / 1000.0f;
+    lastTime = currentTime;
+    return dt;
 }
 bool DXRendererRayTracing::createCameraCB()
 {
@@ -75,21 +81,59 @@ void DXRendererRayTracing::createCameraCBV()
     device->CreateConstantBufferView(&cbv, cpu);
 }
 
-void DXRendererRayTracing::updateCamera()
+void DXRendererRayTracing::updateCamera(float dt)
 {
-    CameraCB cam = {};
-    cam.pos     = { 0.0f, 0.0f, -3.0f };
-    cam.forward = { 0.0f, 0.0f,  1.0f };
-    cam.right   = { 1.0f, 0.0f,  0.0f };
-    cam.up      = { 0.0f, 1.0f,  0.0f };
-    cam.fov     = 60.0f;
+    using namespace DirectX;
 
-    void* p = nullptr;
+    XMVECTOR forward = XMVectorSet(
+        cosf(pitch) * sinf(yaw),
+        sinf(pitch),
+        cosf(pitch) * cosf(yaw),
+        0.0f
+        );
+
+    XMVECTOR right = XMVector3Normalize(
+        XMVector3Cross(XMVectorSet(0, 1, 0, 0), forward)
+        );
+
+    XMVECTOR up = XMVector3Cross(forward, right);
+
+    const float speed = 3.0f * dt;
+
+    if (GetAsyncKeyState('W') & 0x8000)
+        XMStoreFloat3(&camPos, XMLoadFloat3(&camPos) + forward * speed);
+    if (GetAsyncKeyState('S') & 0x8000)
+        XMStoreFloat3(&camPos, XMLoadFloat3(&camPos) - forward * speed);
+    if (GetAsyncKeyState('A') & 0x8000)
+        XMStoreFloat3(&camPos, XMLoadFloat3(&camPos) - right * speed);
+    if (GetAsyncKeyState('D') & 0x8000)
+        XMStoreFloat3(&camPos, XMLoadFloat3(&camPos) + right * speed);
+
+    CameraCB cb;
+    XMStoreFloat3(&cb.pos, XMLoadFloat3(&camPos));
+    XMStoreFloat3(&cb.forward, XMVector3Normalize(forward));
+    XMStoreFloat3(&cb.right, right);
+    XMStoreFloat3(&cb.up, up);
+    cb.fov = fov;
+
+    void* p;
     cameraCB->Map(0, nullptr, &p);
-    memcpy(p, &cam, sizeof(CameraCB));
+    memcpy(p, &cb, sizeof(cb));
     cameraCB->Unmap(0, nullptr);
 }
 
+
+void DXRendererRayTracing::onMouseMove(float dx, float dy)
+{
+    const float sensitivity = 0.002f;
+
+    yaw   += dx * sensitivity;
+    pitch += dy * sensitivity;
+
+    const float limit = DirectX::XM_PIDIV2 - 0.01f;
+    if (pitch > limit) pitch = limit;
+    if (pitch < -limit) pitch = -limit;
+}
 
 
 bool DXRendererRayTracing::createOutputTexture()
@@ -610,7 +654,9 @@ void DXRendererRayTracing::createTLASSRV()
 
 void DXRendererRayTracing::renderFrame(ID3D12GraphicsCommandList4* cmd)
 {
-    updateCamera();
+    float dt = getDeltaTime();
+    updateCamera(dt);
+
     if (!accelBuilt)
     {
         createBLAS(cmd);
