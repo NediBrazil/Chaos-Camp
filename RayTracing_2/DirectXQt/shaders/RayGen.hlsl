@@ -1,6 +1,18 @@
 RWTexture2D<float4> Output : register(u0);
 RaytracingAccelerationStructure Scene : register(t0);
 
+cbuffer CameraCB : register(b0)
+{
+    float3 camPos;
+    float  pad0;
+    float3 camForward;
+    float  pad1;
+    float3 camRight;
+    float  pad2;
+    float3 camUp;
+    float  fov;
+};
+
 struct Payload
 {
     float4 color;
@@ -9,20 +21,28 @@ struct Payload
 [shader("raygeneration")]
 void RayGen()
 {
-    uint2 id = DispatchRaysIndex().xy;
+    uint2 id  = DispatchRaysIndex().xy;
     uint2 dim = DispatchRaysDimensions().xy;
 
     float2 uv = (id + 0.5) / dim;
-    float2 d = uv * 2.0 - 1.0;
+    float2 ndc = uv * 2.0 - 1.0;
+
+    float aspect = (float)dim.x / (float)dim.y;
+    float fovScale = tan(radians(fov * 0.5));
+
+    float3 dir =
+        camForward +
+        ndc.x * aspect * fovScale * camRight -
+        ndc.y * fovScale * camUp;
 
     RayDesc ray;
-    ray.Origin = float3(0, 0, -1);
-    ray.Direction = normalize(float3(d.x, -d.y, 1));
+    ray.Origin = camPos;
+    ray.Direction = normalize(dir);
     ray.TMin = 0.001;
     ray.TMax = 10000.0;
 
     Payload payload;
-    payload.color = float4(0, 0, 0, 1);
+    payload.color = float4(0.2, 0.4, 1.0, 1.0);
 
     TraceRay(
         Scene,

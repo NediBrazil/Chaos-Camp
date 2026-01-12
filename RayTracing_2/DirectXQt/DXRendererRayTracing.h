@@ -25,6 +25,9 @@ private:
     bool createBLAS(ID3D12GraphicsCommandList4* cmd);
     bool createTLAS(ID3D12GraphicsCommandList4* cmd);
     void createTLASSRV();
+    bool createCameraCB();
+    void createCameraCBV();
+    void updateCamera();
 
     ID3D12Device* device = nullptr;
     ID3D12Device5* device5 = nullptr;
@@ -48,6 +51,7 @@ private:
     ID3D12Resource* tlasBuffer = nullptr;
     ID3D12Resource* tlasScratch = nullptr;
     ID3D12Resource* tlasInstanceDesc = nullptr;
+    ID3D12Resource* cameraCB = nullptr;
 
     int width = 0;
     int height = 0;

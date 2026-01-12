@@ -1,7 +1,19 @@
 #include "DXRendererRayTracing.h"
 #include <d3dcompiler.h>
 #include <vector>
+#include <DirectXMath.h>
 
+struct CameraCB
+{
+    DirectX::XMFLOAT3 pos;
+    float pad0;
+    DirectX::XMFLOAT3 forward;
+    float pad1;
+    DirectX::XMFLOAT3 right;
+    float pad2;
+    DirectX::XMFLOAT3 up;
+    float fov;
+};
 bool DXRendererRayTracing::initialize(ID3D12Device* baseDevice, ID3D12CommandQueue* baseQueue, int w, int h)
 {
 
@@ -15,14 +27,70 @@ bool DXRendererRayTracing::initialize(ID3D12Device* baseDevice, ID3D12CommandQue
 
     if (!createOutputTexture()) return false;
     if (!createDescriptorHeap()) return false;
+    if (!createCameraCB()) return false;
+    createCameraCBV();
     if (!createTriangleBuffers()) return false;
     if (!createGlobalRootSignature()) return false;
     if (!createStateObject()) return false;
     if (!createShaderBindingTable()) return false;
-
-
     return true;
 }
+bool DXRendererRayTracing::createCameraCB()
+{
+    D3D12_HEAP_PROPERTIES heap = {};
+    heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+    D3D12_RESOURCE_DESC desc = {};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    desc.Width = (sizeof(CameraCB) + 255) & ~255;
+    desc.Height = 1;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    return SUCCEEDED(device->CreateCommittedResource(
+        &heap,
+        D3D12_HEAP_FLAG_NONE,
+        &desc,
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&cameraCB)));
+}
+
+void DXRendererRayTracing::createCameraCBV()
+{
+    D3D12_CONSTANT_BUFFER_VIEW_DESC cbv = {};
+    cbv.BufferLocation = cameraCB->GetGPUVirtualAddress();
+    cbv.SizeInBytes = (sizeof(CameraCB) + 255) & ~255;
+
+    UINT inc = device->GetDescriptorHandleIncrementSize(
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    D3D12_CPU_DESCRIPTOR_HANDLE cpu =
+        descriptorHeap->GetCPUDescriptorHandleForHeapStart();
+
+    cpu.ptr += inc * 2;
+
+    device->CreateConstantBufferView(&cbv, cpu);
+}
+
+void DXRendererRayTracing::updateCamera()
+{
+    CameraCB cam = {};
+    cam.pos     = { 0.0f, 0.0f, -3.0f };
+    cam.forward = { 0.0f, 0.0f,  1.0f };
+    cam.right   = { 1.0f, 0.0f,  0.0f };
+    cam.up      = { 0.0f, 1.0f,  0.0f };
+    cam.fov     = 60.0f;
+
+    void* p = nullptr;
+    cameraCB->Map(0, nullptr, &p);
+    memcpy(p, &cam, sizeof(CameraCB));
+    cameraCB->Unmap(0, nullptr);
+}
+
+
 
 bool DXRendererRayTracing::createOutputTexture()
 {
@@ -55,7 +123,7 @@ bool DXRendererRayTracing::createOutputTexture()
 bool DXRendererRayTracing::createDescriptorHeap()
 {
     D3D12_DESCRIPTOR_HEAP_DESC h = {};
-    h.NumDescriptors = 2;
+    h.NumDescriptors = 3;
     h.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     h.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -78,18 +146,20 @@ bool DXRendererRayTracing::createDescriptorHeap()
 
 bool DXRendererRayTracing::createGlobalRootSignature()
 {
-    CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+    CD3DX12_DESCRIPTOR_RANGE1 ranges[3];
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
 
-    CD3DX12_ROOT_PARAMETER1 params[2];
+    CD3DX12_ROOT_PARAMETER1 params[3];
     params[0].InitAsDescriptorTable(1, &ranges[0]);
     params[1].InitAsDescriptorTable(1, &ranges[1]);
+    params[2].InitAsDescriptorTable(1, &ranges[2]);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
-    desc.Init_1_1(2, params, 0, nullptr);
+    desc.Init_1_1(3, params, 0, nullptr);
 
-    ID3DBlob* blob;
+    ID3DBlob* blob = nullptr;
     if (FAILED(D3D12SerializeVersionedRootSignature(&desc, &blob, nullptr)))
         return false;
 
@@ -102,7 +172,6 @@ bool DXRendererRayTracing::createGlobalRootSignature()
     blob->Release();
     return ok;
 }
-
 
 bool DXRendererRayTracing::createStateObject()
 {
@@ -541,6 +610,7 @@ void DXRendererRayTracing::createTLASSRV()
 
 void DXRendererRayTracing::renderFrame(ID3D12GraphicsCommandList4* cmd)
 {
+    updateCamera();
     if (!accelBuilt)
     {
         createBLAS(cmd);
@@ -563,6 +633,9 @@ void DXRendererRayTracing::renderFrame(ID3D12GraphicsCommandList4* cmd)
 
     gpu.ptr += inc;
     cmd->SetComputeRootDescriptorTable(1, gpu);
+
+    gpu.ptr += inc;
+    cmd->SetComputeRootDescriptorTable(2, gpu);
 
     UINT idSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
     UINT align = D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT;
