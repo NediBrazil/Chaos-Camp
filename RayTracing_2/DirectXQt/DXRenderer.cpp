@@ -187,6 +187,24 @@ bool DXRenderer::createCommandObjects()
 
 bool DXRenderer::createSwapChainAndRTVs(HWND hwnd)
 {
+    if (!factory || !device || !queue)
+    {
+        OutputDebugStringA("createSwapChainAndRTVs: factory/device/queue missing\n");
+        return false;
+    }
+
+    if (swapChain)
+    {
+        waitForGpu();
+
+        for (int i = 0; i < 2; ++i)
+            safeRelease((IUnknown*&)renderTargets[i]);
+
+        safeRelease((IUnknown*&)rtvHeap);
+
+        safeRelease((IUnknown*&)swapChain);
+    }
+
     DXGI_SWAP_CHAIN_DESC1 sc = {};
     sc.BufferCount = 2;
     sc.Width = width;
@@ -201,15 +219,25 @@ bool DXRenderer::createSwapChainAndRTVs(HWND hwnd)
 
     IDXGISwapChain1* temp = nullptr;
     HRESULT hr = factory->CreateSwapChainForHwnd(queue, hwnd, &sc, nullptr, nullptr, &temp);
-    if (FAILED(hr)) { PrintHR("CreateSwapChainForHwnd FAILED", hr); return false; }
+    if (FAILED(hr))
+    {
+        PrintHR("CreateSwapChainForHwnd FAILED", hr);
+        return false;
+    }
 
     hr = temp->QueryInterface(IID_PPV_ARGS(&swapChain));
-    if (FAILED(hr)) { PrintHR("QueryInterface for IDXGISwapChain3 FAILED", hr); temp->Release(); return false; }
     temp->Release();
+    if (FAILED(hr))
+    {
+        PrintHR("QueryInterface for IDXGISwapChain3 FAILED", hr);
+        return false;
+    }
+    factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER);
 
     D3D12_DESCRIPTOR_HEAP_DESC hd = {};
     hd.NumDescriptors = 2;
     hd.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    hd.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
     hr = device->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&rtvHeap));
     if (FAILED(hr)) { PrintHR("CreateDescriptorHeap FAILED", hr); return false; }
 
@@ -221,12 +249,13 @@ bool DXRenderer::createSwapChainAndRTVs(HWND hwnd)
         hr = swapChain->GetBuffer(i, IID_PPV_ARGS(&renderTargets[i]));
         if (FAILED(hr)) { PrintHR("GetBuffer FAILED", hr); return false; }
         device->CreateRenderTargetView(renderTargets[i], nullptr, h);
-        h.ptr += rtvDescriptorSize;
+        h.ptr = UINT64(h.ptr) + rtvDescriptorSize;
     }
 
     backBufferIndex = swapChain->GetCurrentBackBufferIndex();
     return true;
 }
+
 
 
 bool DXRenderer::createPipeline()

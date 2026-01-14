@@ -2,10 +2,21 @@
 #include <windows.h>
 #include <d3d12.h>
 #include <dxgi1_4.h>
+#include <fstream>
+#include <sstream>
 #include "d3dx12.h"
 #include <DirectXMath.h>
 #include <QDateTime>
+struct Mesh
+{
+    std::vector<DirectX::XMFLOAT3> vertices;
+    std::vector<uint32_t> indices;
+};
 
+struct Scene
+{
+    std::vector<Mesh> meshes;
+};
 class DXRendererRayTracing
 {
 public:
@@ -24,13 +35,12 @@ private:
     bool createGlobalRootSignature();
     bool createStateObject();
     bool createShaderBindingTable();
-    bool createTriangleBuffers();
-    bool createBLAS(ID3D12GraphicsCommandList4* cmd);
+    bool createMeshBuffers(const Mesh& mesh,ID3D12Resource** vb,ID3D12Resource** ib);
+    bool createBLAS(ID3D12GraphicsCommandList4* cmd,ID3D12Resource* vb,UINT vertexCount,ID3D12Resource* ib,UINT indexCount,ID3D12Resource** outBLAS);
     bool createTLAS(ID3D12GraphicsCommandList4* cmd);
     void createTLASSRV();
     bool createCameraCB();
     void createCameraCBV();
-    void onMouseMove(float dx, float dy);
 
     ID3D12Device* device = nullptr;
     ID3D12Device5* device5 = nullptr;
@@ -55,6 +65,7 @@ private:
     ID3D12Resource* tlasScratch = nullptr;
     ID3D12Resource* tlasInstanceDesc = nullptr;
     ID3D12Resource* cameraCB = nullptr;
+    std::vector<ID3D12Resource*> blasBuffers;
 
     DirectX::XMFLOAT3 camPos = { 0.0f, 0.0f, -3.0f };
     float yaw = 0.0f;
@@ -65,4 +76,5 @@ private:
 
     int width = 0;
     int height = 0;
+    Scene scene;
 };

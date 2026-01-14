@@ -13,9 +13,53 @@ struct CameraCB
     DirectX::XMFLOAT3 up;
     float fov;
 };
+
+Scene loadScene(const char* path)
+{
+    Scene scene;
+    Mesh* current = nullptr;
+
+    std::ifstream file(path);
+    if (!file.is_open())
+    {
+        MessageBoxA(0, "Failed to open scene.txt", "Scene Load Error", MB_OK);
+        return scene;
+    }
+    std::string line;
+
+    while (std::getline(file, line))
+    {
+        std::stringstream ss(line);
+        std::string cmd;
+        ss >> cmd;
+
+        if (cmd == "mesh")
+        {
+            scene.meshes.push_back({});
+            current = &scene.meshes.back();
+        }
+        else if (cmd == "v")
+        {
+            float x, y, z;
+            ss >> x >> y >> z;
+            current->vertices.push_back({ x, y, z });
+        }
+        else if (cmd == "f")
+        {
+            uint32_t a, b, c;
+            ss >> a >> b >> c;
+            current->indices.push_back(a);
+            current->indices.push_back(b);
+            current->indices.push_back(c);
+        }
+    }
+
+    return scene;
+}
+
 bool DXRendererRayTracing::initialize(ID3D12Device* baseDevice, ID3D12CommandQueue* baseQueue, int w, int h)
 {
-
+    scene = loadScene("scene.txt");
     device = baseDevice;
     queue = baseQueue;
     width = w;
@@ -28,12 +72,12 @@ bool DXRendererRayTracing::initialize(ID3D12Device* baseDevice, ID3D12CommandQue
     if (!createDescriptorHeap()) return false;
     if (!createCameraCB()) return false;
     createCameraCBV();
-    if (!createTriangleBuffers()) return false;
     if (!createGlobalRootSignature()) return false;
     if (!createStateObject()) return false;
     if (!createShaderBindingTable()) return false;
     return true;
 }
+
 float DXRendererRayTracing::getDeltaTime()
 {
     qint64 currentTime = QDateTime::currentMSecsSinceEpoch();
@@ -123,19 +167,6 @@ void DXRendererRayTracing::updateCamera(float dt)
 }
 
 
-void DXRendererRayTracing::onMouseMove(float dx, float dy)
-{
-    const float sensitivity = 0.002f;
-
-    yaw   += dx * sensitivity;
-    pitch += dy * sensitivity;
-
-    const float limit = DirectX::XM_PIDIV2 - 0.01f;
-    if (pitch > limit) pitch = limit;
-    if (pitch < -limit) pitch = -limit;
-}
-
-
 bool DXRendererRayTracing::createOutputTexture()
 {
     D3D12_RESOURCE_DESC d = {};
@@ -167,7 +198,7 @@ bool DXRendererRayTracing::createOutputTexture()
 bool DXRendererRayTracing::createDescriptorHeap()
 {
     D3D12_DESCRIPTOR_HEAP_DESC h = {};
-    h.NumDescriptors = 3;
+    h.NumDescriptors = 8;
     h.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
     h.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 
@@ -409,83 +440,65 @@ bool DXRendererRayTracing::createShaderBindingTable()
     return true;
 }
 
-bool DXRendererRayTracing::createTriangleBuffers()
+bool DXRendererRayTracing::createMeshBuffers(
+    const Mesh& mesh,
+    ID3D12Resource** vb,
+    ID3D12Resource** ib)
 {
-    struct Vertex
-    {
-        float x, y, z;
-    };
-
-    Vertex vertices[] =
-        {
-            {  0.0f,  0.5f, 0.0f },
-            {  0.5f, -0.5f, 0.0f },
-            { -0.5f, -0.5f, 0.0f }
-        };
-
-    uint32_t indices[] = { 0, 1, 2 };
-
-    UINT vbSize = sizeof(vertices);
-    UINT ibSize = sizeof(indices);
+    UINT vbSize = UINT(mesh.vertices.size() * sizeof(DirectX::XMFLOAT3));
+    UINT ibSize = UINT(mesh.indices.size() * sizeof(uint32_t));
 
     D3D12_HEAP_PROPERTIES heap = {};
     heap.Type = D3D12_HEAP_TYPE_UPLOAD;
 
-    D3D12_RESOURCE_DESC vbDesc = {};
-    vbDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    vbDesc.Width = vbSize;
-    vbDesc.Height = 1;
-    vbDesc.DepthOrArraySize = 1;
-    vbDesc.MipLevels = 1;
-    vbDesc.SampleDesc.Count = 1;
-    vbDesc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+    D3D12_RESOURCE_DESC desc = {};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    desc.Height = 1;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
 
+    desc.Width = vbSize;
     if (FAILED(device->CreateCommittedResource(
-            &heap,
-            D3D12_HEAP_FLAG_NONE,
-            &vbDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&vertexBuffer))))
+            &heap, D3D12_HEAP_FLAG_NONE, &desc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(vb))))
         return false;
 
-    void* pData = nullptr;
-    vertexBuffer->Map(0, nullptr, &pData);
-    memcpy(pData, vertices, vbSize);
-    vertexBuffer->Unmap(0, nullptr);
+    void* p;
+    (*vb)->Map(0, nullptr, &p);
+    memcpy(p, mesh.vertices.data(), vbSize);
+    (*vb)->Unmap(0, nullptr);
 
-    D3D12_RESOURCE_DESC ibDesc = vbDesc;
-    ibDesc.Width = ibSize;
-
+    desc.Width = ibSize;
     if (FAILED(device->CreateCommittedResource(
-            &heap,
-            D3D12_HEAP_FLAG_NONE,
-            &ibDesc,
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            nullptr,
-            IID_PPV_ARGS(&indexBuffer))))
+            &heap, D3D12_HEAP_FLAG_NONE, &desc,
+            D3D12_RESOURCE_STATE_GENERIC_READ, nullptr,
+            IID_PPV_ARGS(ib))))
         return false;
 
-    indexBuffer->Map(0, nullptr, &pData);
-    memcpy(pData, indices, ibSize);
-    indexBuffer->Unmap(0, nullptr);
+    (*ib)->Map(0, nullptr, &p);
+    memcpy(p, mesh.indices.data(), ibSize);
+    (*ib)->Unmap(0, nullptr);
 
     return true;
 }
 
-bool DXRendererRayTracing::createBLAS(ID3D12GraphicsCommandList4* cmd)
+
+bool DXRendererRayTracing::createBLAS(ID3D12GraphicsCommandList4* cmd,ID3D12Resource* vb,UINT vertexCount,ID3D12Resource* ib,UINT indexCount,ID3D12Resource** outBLAS)
 {
     D3D12_RAYTRACING_GEOMETRY_DESC geom = {};
     geom.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
     geom.Flags = D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE;
 
-    geom.Triangles.VertexBuffer.StartAddress = vertexBuffer->GetGPUVirtualAddress();
+    geom.Triangles.VertexBuffer.StartAddress = vb->GetGPUVirtualAddress();
     geom.Triangles.VertexBuffer.StrideInBytes = sizeof(float) * 3;
-    geom.Triangles.VertexCount = 3;
+    geom.Triangles.VertexCount = vertexCount;
     geom.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
 
-    geom.Triangles.IndexBuffer = indexBuffer->GetGPUVirtualAddress();
-    geom.Triangles.IndexCount = 3;
+    geom.Triangles.IndexBuffer = ib->GetGPUVirtualAddress();
+    geom.Triangles.IndexCount = indexCount;
     geom.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
 
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
@@ -520,11 +533,10 @@ bool DXRendererRayTracing::createBLAS(ID3D12GraphicsCommandList4* cmd)
             &bufferDesc,
             D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE,
             nullptr,
-            IID_PPV_ARGS(&blasBuffer))))
+            IID_PPV_ARGS(outBLAS))))
         return false;
 
     bufferDesc.Width = info.ScratchDataSizeInBytes;
-
     if (FAILED(device->CreateCommittedResource(
             &heap,
             D3D12_HEAP_FLAG_NONE,
@@ -537,13 +549,13 @@ bool DXRendererRayTracing::createBLAS(ID3D12GraphicsCommandList4* cmd)
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC build = {};
     build.Inputs = inputs;
     build.ScratchAccelerationStructureData = blasScratch->GetGPUVirtualAddress();
-    build.DestAccelerationStructureData = blasBuffer->GetGPUVirtualAddress();
+    build.DestAccelerationStructureData = (*outBLAS)->GetGPUVirtualAddress();
 
     cmd->BuildRaytracingAccelerationStructure(&build, 0, nullptr);
 
     D3D12_RESOURCE_BARRIER barrier = {};
     barrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-    barrier.UAV.pResource = blasBuffer;
+    barrier.UAV.pResource = *outBLAS;
     cmd->ResourceBarrier(1, &barrier);
 
     return true;
@@ -551,19 +563,28 @@ bool DXRendererRayTracing::createBLAS(ID3D12GraphicsCommandList4* cmd)
 
 bool DXRendererRayTracing::createTLAS(ID3D12GraphicsCommandList4* cmd)
 {
-    D3D12_RAYTRACING_INSTANCE_DESC instance = {};
-    instance.Transform[0][0] = 1.0f;
-    instance.Transform[1][1] = 1.0f;
-    instance.Transform[2][2] = 1.0f;
-    instance.InstanceMask = 1;
-    instance.AccelerationStructure = blasBuffer->GetGPUVirtualAddress();
+    std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
+
+    for (UINT i = 0; i < blasBuffers.size(); ++i)
+    {
+        D3D12_RAYTRACING_INSTANCE_DESC inst = {};
+        inst.Transform[0][0] = 1.0f;
+        inst.Transform[1][1] = 1.0f;
+        inst.Transform[2][2] = 1.0f;
+        inst.InstanceMask = 1;
+        inst.InstanceID = i;
+        inst.AccelerationStructure =
+            blasBuffers[i]->GetGPUVirtualAddress();
+
+        instances.push_back(inst);
+    }
 
     D3D12_HEAP_PROPERTIES uploadHeap = {};
     uploadHeap.Type = D3D12_HEAP_TYPE_UPLOAD;
 
     D3D12_RESOURCE_DESC instDesc = {};
     instDesc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-    instDesc.Width = sizeof(D3D12_RAYTRACING_INSTANCE_DESC);
+    instDesc.Width = sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * instances.size();
     instDesc.Height = 1;
     instDesc.DepthOrArraySize = 1;
     instDesc.MipLevels = 1;
@@ -581,13 +602,13 @@ bool DXRendererRayTracing::createTLAS(ID3D12GraphicsCommandList4* cmd)
 
     void* pData;
     tlasInstanceDesc->Map(0, nullptr, &pData);
-    memcpy(pData, &instance, sizeof(instance));
+    memcpy(pData, instances.data(), sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * instances.size());
     tlasInstanceDesc->Unmap(0, nullptr);
 
     D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs = {};
     inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
     inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-    inputs.NumDescs = 1;
+    inputs.NumDescs = (UINT)instances.size();
     inputs.InstanceDescs = tlasInstanceDesc->GetGPUVirtualAddress();
 
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
@@ -659,7 +680,24 @@ void DXRendererRayTracing::renderFrame(ID3D12GraphicsCommandList4* cmd)
 
     if (!accelBuilt)
     {
-        createBLAS(cmd);
+        for (const Mesh& mesh : scene.meshes)
+        {
+            ID3D12Resource* vb;
+            ID3D12Resource* ib;
+            ID3D12Resource* blas;
+
+            createMeshBuffers(mesh, &vb, &ib);
+            createBLAS(cmd, vb,
+                       (UINT)mesh.vertices.size(),
+                       ib,
+                       (UINT)mesh.indices.size(),
+                       &blas);
+
+            blasBuffers.push_back(blas);
+        }
+        D3D12_RESOURCE_BARRIER uav = {};
+        uav.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+        cmd->ResourceBarrier(1, &uav);
         createTLAS(cmd);
         createTLASSRV();
         accelBuilt = true;
