@@ -46,11 +46,20 @@ Scene loadScene(const char* path)
         }
         else if (cmd == "f")
         {
-            uint32_t a, b, c;
-            ss >> a >> b >> c;
-            current->indices.push_back(a);
-            current->indices.push_back(b);
-            current->indices.push_back(c);
+            uint32_t i;
+            std::vector<uint32_t> faceIndices;
+
+            while (ss >> i)
+            {
+                faceIndices.push_back(i);
+            }
+
+            for (size_t k = 0; k + 2 < faceIndices.size(); k += 3)
+            {
+                current->indices.push_back(faceIndices[k]);
+                current->indices.push_back(faceIndices[k + 1]);
+                current->indices.push_back(faceIndices[k + 2]);
+            }
         }
     }
 

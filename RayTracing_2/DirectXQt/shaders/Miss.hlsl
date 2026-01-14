@@ -6,5 +6,5 @@ struct Payload
 [shader("miss")]
 void Miss(inout Payload payload)
 {
-    payload.color = float4(0.0, 1.0, 0.0, 1.0);
+    payload.color = float4(0.02, 0.02, 0.025, 1.0);
 }

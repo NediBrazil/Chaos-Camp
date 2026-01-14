@@ -42,7 +42,7 @@ void RayGen()
     ray.TMax = 10000.0;
 
     Payload payload;
-    payload.color = float4(0.2, 0.4, 1.0, 1.0);
+    payload.color = float4(0.1, 0.1, 0.1, 1.0);
 
     TraceRay(
         Scene,

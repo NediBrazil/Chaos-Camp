@@ -3,6 +3,18 @@
   "WorkspaceRootPath": "C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\ClosestHit.hlsl||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:ClosestHit.hlsl||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\Miss.hlsl||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:Miss.hlsl||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\RayGen.hlsl||{8B382828-6202-11D1-8870-0000F87579D2}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:RayGen.hlsl||{8B382828-6202-11D1-8870-0000F87579D2}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\TrianglePS.hlsl||{8B382828-6202-11D1-8870-0000F87579D2}",
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:TrianglePS.hlsl||{8B382828-6202-11D1-8870-0000F87579D2}"
     },
@@ -18,7 +30,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 2,
+          "SelectedChildIndex": 1,
           "Children": [
             {
               "$type": "Bookmark",
@@ -26,7 +38,46 @@
             },
             {
               "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "ClosestHit.hlsl",
+              "DocumentMoniker": "C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\ClosestHit.hlsl",
+              "RelativeDocumentMoniker": "ClosestHit.hlsl",
+              "ToolTip": "C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\ClosestHit.hlsl",
+              "RelativeToolTip": "ClosestHit.hlsl",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAoAAAAfAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2026-01-14T20:11:56.146Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
               "DocumentIndex": 1,
+              "Title": "Miss.hlsl",
+              "DocumentMoniker": "C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\Miss.hlsl",
+              "RelativeDocumentMoniker": "Miss.hlsl",
+              "ToolTip": "C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\Miss.hlsl",
+              "RelativeToolTip": "Miss.hlsl",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAoAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2026-01-14T20:11:42.904Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "RayGen.hlsl",
+              "DocumentMoniker": "C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\RayGen.hlsl",
+              "RelativeDocumentMoniker": "RayGen.hlsl",
+              "ToolTip": "C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\RayGen.hlsl",
+              "RelativeToolTip": "RayGen.hlsl",
+              "ViewState": "AgIAAB8AAAAAAAAAAAAUwDMAAAAKAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
+              "WhenOpened": "2026-01-14T20:11:31.245Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
               "Title": "TriangleVS.hlsl",
               "DocumentMoniker": "C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\TriangleVS.hlsl",
               "RelativeDocumentMoniker": "TriangleVS.hlsl",
@@ -34,18 +85,17 @@
               "RelativeToolTip": "TriangleVS.hlsl",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAA0AAAArAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
-              "WhenOpened": "2026-01-14T08:55:16.695Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-01-14T08:55:16.695Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 3,
               "Title": "TrianglePS.hlsl",
               "DocumentMoniker": "C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\TrianglePS.hlsl",
               "RelativeDocumentMoniker": "TrianglePS.hlsl",
               "ToolTip": "C:\\Workspace\\Chaos-Camp\\RayTracing_2\\DirectXQt\\shaders\\TrianglePS.hlsl",
               "RelativeToolTip": "TrianglePS.hlsl",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAYAAAABAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAgAAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.001001|",
               "WhenOpened": "2025-12-29T15:52:56.765Z",
               "EditorCaption": ""
