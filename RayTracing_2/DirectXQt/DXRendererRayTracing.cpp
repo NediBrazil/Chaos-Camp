@@ -13,6 +13,7 @@ struct CameraCB
     DirectX::XMFLOAT3 up;
     float fov;
 };
+
 struct Light
 {
     DirectX::XMFLOAT3 position;
@@ -102,8 +103,9 @@ Scene loadScene(const char* path)
     return scene;
 }
 
-bool DXRendererRayTracing::initialize(ID3D12Device* baseDevice, ID3D12CommandQueue* baseQueue, int w, int h)
+bool DXRendererRayTracing::initialize(ID3D12Device* baseDevice, ID3D12CommandQueue* baseQueue,HWND hwnd, int w, int h)
 {
+    this->hwnd = hwnd;
     scene = loadScene("scene1.crtscene");
     device = baseDevice;
     queue = baseQueue;
@@ -176,41 +178,73 @@ void DXRendererRayTracing::updateCamera(float dt)
 {
     using namespace DirectX;
 
-    XMVECTOR forward = XMVectorSet(
-        cosf(pitch) * sinf(yaw),
+    XMVECTOR forward = XMVector3Normalize(XMVectorSet(
+        sinf(yaw) * cosf(pitch),
         sinf(pitch),
-        cosf(pitch) * cosf(yaw),
+        cosf(yaw) * cosf(pitch),
         0.0f
-        );
+        ));
+
+    XMVECTOR worldUp = XMVectorSet(0, 1, 0, 0);
 
     XMVECTOR right = XMVector3Normalize(
-        XMVector3Cross(XMVectorSet(0, 1, 0, 0), forward)
+        XMVector3Cross(worldUp, forward)
         );
 
     XMVECTOR up = XMVector3Cross(forward, right);
 
     const float speed = 3.0f * dt;
+    XMVECTOR pos = XMLoadFloat3(&camPos);
 
-    if (GetAsyncKeyState('W') & 0x8000)
-        XMStoreFloat3(&camPos, XMLoadFloat3(&camPos) + forward * speed);
-    if (GetAsyncKeyState('S') & 0x8000)
-        XMStoreFloat3(&camPos, XMLoadFloat3(&camPos) - forward * speed);
-    if (GetAsyncKeyState('A') & 0x8000)
-        XMStoreFloat3(&camPos, XMLoadFloat3(&camPos) - right * speed);
-    if (GetAsyncKeyState('D') & 0x8000)
-        XMStoreFloat3(&camPos, XMLoadFloat3(&camPos) + right * speed);
+    if (GetAsyncKeyState('W') & 0x8000) pos += forward * speed;
+    if (GetAsyncKeyState('S') & 0x8000) pos -= forward * speed;
+    if (GetAsyncKeyState('A') & 0x8000) pos -= right   * speed;
+    if (GetAsyncKeyState('D') & 0x8000) pos += right   * speed;
+
+    XMStoreFloat3(&camPos, pos);
 
     CameraCB cb;
-    XMStoreFloat3(&cb.pos, XMLoadFloat3(&camPos));
-    XMStoreFloat3(&cb.forward, XMVector3Normalize(forward));
+    XMStoreFloat3(&cb.pos, pos);
+    XMStoreFloat3(&cb.forward, forward);
     XMStoreFloat3(&cb.right, right);
     XMStoreFloat3(&cb.up, up);
-    cb.fov = fov;
+    cb.fov = XMConvertToRadians(fov);
 
     void* p;
     cameraCB->Map(0, nullptr, &p);
     memcpy(p, &cb, sizeof(cb));
     cameraCB->Unmap(0, nullptr);
+}
+
+
+
+void DXRendererRayTracing::updateMouseLook(HWND hwnd)
+{
+
+    static POINT lastPos;
+    static bool first = true;
+
+    POINT p;
+    GetCursorPos(&p);
+
+    if (first)
+    {
+        lastPos = p;
+        first = false;
+        return;
+    }
+
+    float dx = float(p.x - lastPos.x);
+    float dy = float(p.y - lastPos.y);
+
+    lastPos = p;
+
+    const float sensitivity = 0.0025f;
+
+    yaw   += dx * sensitivity;
+    pitch -= dy * sensitivity;
+
+    pitch = std::clamp(pitch, -1.55f, 1.55f);
 }
 
 bool DXRendererRayTracing::createLightCB()
@@ -238,9 +272,9 @@ bool DXRendererRayTracing::createLightCB()
 
 
     Light light = {};
-    light.position = { 5, 5, 6 };
-    light.intensity = 1.0f;
-    light.color = { 1, 1, 1 };
+    light.position = { -4.0f, 6.0f, -4.0f };
+    light.intensity = 1.2f;
+    light.color = { 1.0f, 1.0f, 1.0f };
 
     void* p;
     lightCB->Map(0, nullptr, &p);
@@ -812,6 +846,7 @@ void DXRendererRayTracing::createTLASSRV()
 void DXRendererRayTracing::renderFrame(ID3D12GraphicsCommandList4* cmd)
 {
     float dt = getDeltaTime();
+    updateMouseLook(hwnd);
     updateCamera(dt);
 
     if (!accelBuilt)
@@ -860,7 +895,7 @@ void DXRendererRayTracing::renderFrame(ID3D12GraphicsCommandList4* cmd)
     gpu.ptr += inc;
     cmd->SetComputeRootDescriptorTable(2, gpu);
 
-    gpu.ptr += inc;
+    gpu.ptr +=  inc * 2;
     cmd->SetComputeRootDescriptorTable(3, gpu);
 
     gpu.ptr += inc;

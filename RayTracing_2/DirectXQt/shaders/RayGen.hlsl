@@ -28,7 +28,7 @@ void RayGen()
     float2 ndc = uv * 2.0 - 1.0;
 
     float aspect = (float)dim.x / (float)dim.y;
-    float fovScale = tan(radians(fov * 0.5));
+    float fovScale = tan(fov * 0.5);
 
     float3 dir =
         camForward +

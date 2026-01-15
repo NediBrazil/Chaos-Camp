@@ -159,7 +159,6 @@ bool DXRenderer::createFactoryAndDevice()
     return SUCCEEDED(hr);
 }
 
-
 bool DXRenderer::createCommandObjects()
 {
     D3D12_COMMAND_QUEUE_DESC q = {};
@@ -391,7 +390,7 @@ bool DXRenderer::initialize(HWND hwnd, int w, int h)
     if (!createReadbackBuffer()) return false;
 
     rayTracing = new DXRendererRayTracing();
-    rayTracing->initialize(device, queue, width, height);
+    rayTracing->initialize(device, queue, hwnd, width, height);
     setRenderMode(RenderMode::RayTracing);
     return true;
 }

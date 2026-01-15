@@ -42,6 +42,8 @@ private:
     void waitForGpu();
     void safeRelease(IUnknown*& p);
     bool loadShader(const wchar_t* filename, ID3DBlob** blob);
+    void addYaw(float v);
+    void addPitch(float v);
 
     IDXGIFactory4* factory = nullptr;
     IDXGIAdapter1* adapter = nullptr;

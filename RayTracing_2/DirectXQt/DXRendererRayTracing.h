@@ -19,10 +19,11 @@ struct Scene
 {
     std::vector<Mesh> meshes;
 };
+
 class DXRendererRayTracing
 {
 public:
-    bool initialize(ID3D12Device* baseDevice, ID3D12CommandQueue* baseQueue, int w, int h);
+    bool initialize(ID3D12Device* baseDevice, ID3D12CommandQueue* baseQueue, HWND hwnd, int w, int h);
     void renderFrame(ID3D12GraphicsCommandList4* cmd);
     void cleanup();
     void updateCamera(float dt);
@@ -46,6 +47,9 @@ private:
     bool createLightCB();
     void createLightCBV();
     void createMeshSRVs(ID3D12Resource* vb,ID3D12Resource* ib,UINT vCount,UINT iCount);
+    void addYaw(float v);
+    void addPitch(float v);
+    void updateMouseLook(HWND hwnd);
 
     ID3D12Device* device = nullptr;
     ID3D12Device5* device5 = nullptr;
@@ -72,6 +76,7 @@ private:
     ID3D12Resource* cameraCB = nullptr;
     std::vector<ID3D12Resource*> blasBuffers;
     ID3D12Resource* lightCB = nullptr;
+    HWND hwnd = nullptr;
     std::vector<ID3D12Resource*> vertexBuffers;
     std::vector<ID3D12Resource*> indexBuffers;
 
@@ -80,9 +85,12 @@ private:
     float pitch = 0.0f;
     float fov = 60.0f;
     qint64 lastTime = 0;
+    POINT lastMouse = {};
+    bool firstMouse = true;
     float getDeltaTime();
 
     int width = 0;
     int height = 0;
     Scene scene;
+
 };

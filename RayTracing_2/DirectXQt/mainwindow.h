@@ -14,6 +14,7 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget* parent = nullptr);
 
+
 private:
     DXRenderer renderer;
     DXRendererRayTracing raytracer;
@@ -25,6 +26,9 @@ private:
     QTimer fpsTimer;
 
     int frameCounter = 0;
+
+    QPoint lastMousePos;
+    bool dragging = false;
 
     void renderToQt();
 
