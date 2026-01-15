@@ -16,7 +16,7 @@ void ClosestHit(
     float3 lightDir = normalize(float3(-0.4, -1.0, -0.6));
     float NdotL = saturate(dot(n, -lightDir));
 
-    float3 baseColor = float3(0.7, 0.7, 0.7);
+    float3 baseColor = float3(0.1, 0.9, 0.2);
 
     payload.color = float4(baseColor * (0.15 + NdotL), 1.0);
 }

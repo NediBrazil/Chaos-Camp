@@ -5,6 +5,8 @@
 #include <fstream>
 #include <sstream>
 #include "d3dx12.h"
+#include <string>
+#include <cctype>
 #include <DirectXMath.h>
 #include <QDateTime>
 struct Mesh

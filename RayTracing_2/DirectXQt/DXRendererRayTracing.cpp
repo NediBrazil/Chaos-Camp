@@ -14,51 +14,81 @@ struct CameraCB
     float fov;
 };
 
+static bool isNumberChar(char c)
+{
+    return std::isdigit(c) || c == '-' || c == '.' || c == '+';
+}
+
 Scene loadScene(const char* path)
 {
     Scene scene;
-    Mesh* current = nullptr;
-
     std::ifstream file(path);
     if (!file.is_open())
-    {
-        MessageBoxA(0, "Failed to open scene.txt", "Scene Load Error", MB_OK);
         return scene;
-    }
+
     std::string line;
+    Mesh current;
+
+    bool readingVertices = false;
+    bool readingTriangles = false;
 
     while (std::getline(file, line))
     {
+        if (line.find("\"vertices\"") != std::string::npos)
+        {
+            current = Mesh{};
+            readingVertices = true;
+            readingTriangles = false;
+            continue;
+        }
+
+        if (line.find("\"triangles\"") != std::string::npos)
+        {
+            readingVertices = false;
+            readingTriangles = true;
+            continue;
+        }
+
+        if (line.find("]") != std::string::npos)
+        {
+            if (readingTriangles)
+                scene.meshes.push_back(current);
+
+            readingVertices = false;
+            readingTriangles = false;
+            continue;
+        }
+
         std::stringstream ss(line);
-        std::string cmd;
-        ss >> cmd;
 
-        if (cmd == "mesh")
+        if (readingVertices)
         {
-            scene.meshes.push_back({});
-            current = &scene.meshes.back();
-        }
-        else if (cmd == "v")
-        {
-            float x, y, z;
-            ss >> x >> y >> z;
-            current->vertices.push_back({ x, y, z });
-        }
-        else if (cmd == "f")
-        {
-            uint32_t i;
-            std::vector<uint32_t> faceIndices;
+            float v;
+            std::vector<float> values;
 
-            while (ss >> i)
+            while (ss >> v)
             {
-                faceIndices.push_back(i);
+                values.push_back(v);
+                if (ss.peek() == ',') ss.ignore();
             }
 
-            for (size_t k = 0; k + 2 < faceIndices.size(); k += 3)
+            for (size_t i = 0; i + 2 < values.size(); i += 3)
             {
-                current->indices.push_back(faceIndices[k]);
-                current->indices.push_back(faceIndices[k + 1]);
-                current->indices.push_back(faceIndices[k + 2]);
+                current.vertices.push_back({
+                    values[i],
+                    values[i + 1],
+                    values[i + 2]
+                });
+            }
+        }
+
+        if (readingTriangles)
+        {
+            uint32_t i;
+            while (ss >> i)
+            {
+                current.indices.push_back(i);
+                if (ss.peek() == ',') ss.ignore();
             }
         }
     }
@@ -68,7 +98,7 @@ Scene loadScene(const char* path)
 
 bool DXRendererRayTracing::initialize(ID3D12Device* baseDevice, ID3D12CommandQueue* baseQueue, int w, int h)
 {
-    scene = loadScene("scene.txt");
+    scene = loadScene("scene1.crtscene");
     device = baseDevice;
     queue = baseQueue;
     width = w;
@@ -572,6 +602,8 @@ bool DXRendererRayTracing::createBLAS(ID3D12GraphicsCommandList4* cmd,ID3D12Reso
 
 bool DXRendererRayTracing::createTLAS(ID3D12GraphicsCommandList4* cmd)
 {
+    if (blasBuffers.empty())
+        return false;
     std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instances;
 
     for (UINT i = 0; i < blasBuffers.size(); ++i)
