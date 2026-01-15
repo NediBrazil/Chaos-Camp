@@ -13,7 +13,13 @@ struct CameraCB
     DirectX::XMFLOAT3 up;
     float fov;
 };
-
+struct Light
+{
+    DirectX::XMFLOAT3 position;
+    float intensity;
+    DirectX::XMFLOAT3 color;
+    float pad;
+};
 static bool isNumberChar(char c)
 {
     return std::isdigit(c) || c == '-' || c == '.' || c == '+';
@@ -111,6 +117,8 @@ bool DXRendererRayTracing::initialize(ID3D12Device* baseDevice, ID3D12CommandQue
     if (!createDescriptorHeap()) return false;
     if (!createCameraCB()) return false;
     createCameraCBV();
+    if (!createLightCB()) return false;
+    createLightCBV();
     if (!createGlobalRootSignature()) return false;
     if (!createStateObject()) return false;
     if (!createShaderBindingTable()) return false;
@@ -205,6 +213,60 @@ void DXRendererRayTracing::updateCamera(float dt)
     cameraCB->Unmap(0, nullptr);
 }
 
+bool DXRendererRayTracing::createLightCB()
+{
+    D3D12_HEAP_PROPERTIES heap = {};
+    heap.Type = D3D12_HEAP_TYPE_UPLOAD;
+
+    D3D12_RESOURCE_DESC desc = {};
+    desc.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+    desc.Width = (sizeof(Light) + 255) & ~255;
+    desc.Height = 1;
+    desc.DepthOrArraySize = 1;
+    desc.MipLevels = 1;
+    desc.SampleDesc.Count = 1;
+    desc.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+
+    if (FAILED(device->CreateCommittedResource(
+            &heap,
+            D3D12_HEAP_FLAG_NONE,
+            &desc,
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&lightCB))))
+        return false;
+
+
+    Light light = {};
+    light.position = { 5, 5, 6 };
+    light.intensity = 1.0f;
+    light.color = { 1, 1, 1 };
+
+    void* p;
+    lightCB->Map(0, nullptr, &p);
+    memcpy(p, &light, sizeof(light));
+    lightCB->Unmap(0, nullptr);
+
+    return true;
+}
+
+void DXRendererRayTracing::createLightCBV()
+{
+    D3D12_CONSTANT_BUFFER_VIEW_DESC cbv = {};
+    cbv.BufferLocation = lightCB->GetGPUVirtualAddress();
+    cbv.SizeInBytes = (sizeof(Light) + 255) & ~255;
+
+    UINT inc = device->GetDescriptorHandleIncrementSize(
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    D3D12_CPU_DESCRIPTOR_HANDLE cpu =
+        descriptorHeap->GetCPUDescriptorHandleForHeapStart();
+
+    cpu.ptr += inc * 3;
+
+    device->CreateConstantBufferView(&cbv, cpu);
+}
+
 
 bool DXRendererRayTracing::createOutputTexture()
 {
@@ -260,18 +322,20 @@ bool DXRendererRayTracing::createDescriptorHeap()
 
 bool DXRendererRayTracing::createGlobalRootSignature()
 {
-    CD3DX12_DESCRIPTOR_RANGE1 ranges[3];
+    CD3DX12_DESCRIPTOR_RANGE1 ranges[5];
     ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0);
     ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+    ranges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 0);
+    ranges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
+    ranges[4].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 3);
 
-    CD3DX12_ROOT_PARAMETER1 params[3];
-    params[0].InitAsDescriptorTable(1, &ranges[0]);
-    params[1].InitAsDescriptorTable(1, &ranges[1]);
-    params[2].InitAsDescriptorTable(1, &ranges[2]);
+    CD3DX12_ROOT_PARAMETER1 params[5];
+    for (int i = 0; i < 5; i++)
+        params[i].InitAsDescriptorTable(1, &ranges[i]);
 
     CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC desc;
-    desc.Init_1_1(3, params, 0, nullptr);
+    desc.Init_1_1(5, params, 0, nullptr);
+
 
     ID3DBlob* blob = nullptr;
     if (FAILED(D3D12SerializeVersionedRootSignature(&desc, &blob, nullptr)))
@@ -524,6 +588,37 @@ bool DXRendererRayTracing::createMeshBuffers(
     return true;
 }
 
+void DXRendererRayTracing::createMeshSRVs(
+    ID3D12Resource* vb,
+    ID3D12Resource* ib,
+    UINT vCount,
+    UINT iCount)
+{
+    UINT inc = device->GetDescriptorHandleIncrementSize(
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+    D3D12_CPU_DESCRIPTOR_HANDLE cpu =
+        descriptorHeap->GetCPUDescriptorHandleForHeapStart();
+
+    cpu.ptr += inc * 4;
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC vSrv = {};
+    vSrv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+    vSrv.Format = DXGI_FORMAT_UNKNOWN;
+    vSrv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    vSrv.Buffer.NumElements = vCount;
+    vSrv.Buffer.StructureByteStride = sizeof(DirectX::XMFLOAT3);
+
+    device->CreateShaderResourceView(vb, &vSrv, cpu);
+
+    cpu.ptr += inc;
+
+    D3D12_SHADER_RESOURCE_VIEW_DESC iSrv = vSrv;
+    iSrv.Buffer.NumElements = iCount;
+    iSrv.Buffer.StructureByteStride = sizeof(uint32_t);
+
+    device->CreateShaderResourceView(ib, &iSrv, cpu);
+}
 
 bool DXRendererRayTracing::createBLAS(ID3D12GraphicsCommandList4* cmd,ID3D12Resource* vb,UINT vertexCount,ID3D12Resource* ib,UINT indexCount,ID3D12Resource** outBLAS)
 {
@@ -733,11 +828,14 @@ void DXRendererRayTracing::renderFrame(ID3D12GraphicsCommandList4* cmd)
                        ib,
                        (UINT)mesh.indices.size(),
                        &blas);
-
+            createMeshSRVs(vb, ib,(UINT)mesh.vertices.size(),(UINT)mesh.indices.size());
+            vertexBuffers.push_back(vb);
+            indexBuffers.push_back(ib);
             blasBuffers.push_back(blas);
         }
         D3D12_RESOURCE_BARRIER uav = {};
         uav.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+        uav.UAV.pResource = nullptr;
         cmd->ResourceBarrier(1, &uav);
         createTLAS(cmd);
         createTLASSRV();
@@ -761,6 +859,12 @@ void DXRendererRayTracing::renderFrame(ID3D12GraphicsCommandList4* cmd)
 
     gpu.ptr += inc;
     cmd->SetComputeRootDescriptorTable(2, gpu);
+
+    gpu.ptr += inc;
+    cmd->SetComputeRootDescriptorTable(3, gpu);
+
+    gpu.ptr += inc;
+    cmd->SetComputeRootDescriptorTable(4, gpu);
 
     UINT idSize = D3D12_SHADER_IDENTIFIER_SIZE_IN_BYTES;
     UINT align = D3D12_RAYTRACING_SHADER_RECORD_BYTE_ALIGNMENT;
@@ -832,4 +936,6 @@ DXRendererRayTracing::~DXRendererRayTracing()
         sbtBuffer->Release();
         sbtBuffer = nullptr;
     }
+    for (auto* r : vertexBuffers) r->Release();
+    for (auto* r : indexBuffers) r->Release();
 }

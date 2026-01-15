@@ -43,6 +43,9 @@ private:
     void createTLASSRV();
     bool createCameraCB();
     void createCameraCBV();
+    bool createLightCB();
+    void createLightCBV();
+    void createMeshSRVs(ID3D12Resource* vb,ID3D12Resource* ib,UINT vCount,UINT iCount);
 
     ID3D12Device* device = nullptr;
     ID3D12Device5* device5 = nullptr;
@@ -68,6 +71,9 @@ private:
     ID3D12Resource* tlasInstanceDesc = nullptr;
     ID3D12Resource* cameraCB = nullptr;
     std::vector<ID3D12Resource*> blasBuffers;
+    ID3D12Resource* lightCB = nullptr;
+    std::vector<ID3D12Resource*> vertexBuffers;
+    std::vector<ID3D12Resource*> indexBuffers;
 
     DirectX::XMFLOAT3 camPos = { 0.0f, 0.0f, -3.0f };
     float yaw = 0.0f;
